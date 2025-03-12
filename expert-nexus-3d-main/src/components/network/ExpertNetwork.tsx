@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import GlassCard from "../ui/GlassCard";
+import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
 
 // Mock expert data
 const experts = [
@@ -65,6 +67,7 @@ const ExpertNetwork = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [selectedIndustry, setSelectedIndustry] = useState<string>("All");
   const [activeExpert, setActiveExpert] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   // Horizontal scrolling for industries
   const scrollLeft = () => {
@@ -180,11 +183,13 @@ const ExpertNetwork = () => {
                   </div>
                 </div>
                 
-                <button 
-                  className="mt-4 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                <Button 
+                  variant="link"
+                  className="mt-4 text-sm font-medium text-primary hover:text-primary/80 transition-colors p-0"
+                  onClick={() => navigate(`/expert/${expert.id}`)}
                 >
                   View Full Profile
-                </button>
+                </Button>
               </div>
             </div>
           </GlassCard>
