@@ -12,6 +12,8 @@ import NotFound from "./pages/NotFound";
 import ExpertProfile from "./pages/ExpertProfile";
 import SeekerForm from "./components/Auth/SeekerForm";
 import ExpertForm from "./components/Auth/ExpertForm";
+import Webinar from "./pages/Webinar";
+import Product from "./pages/Product";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +32,8 @@ const App = () => (
           <Route path="/contact" element={<Contact />} />
           <Route path="/auth/seeker" element={<SeekerForm />} />
           <Route path="/auth/expert" element={<ExpertForm />} />
+          <Route path="/webinar" element={<Webinar />} />
+          <Route path="/product" element={<Product />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
