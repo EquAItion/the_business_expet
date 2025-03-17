@@ -1,5 +1,12 @@
 import React from 'react';
 import Layout from "@/components/layout";
+import '../components/webinar/Webinar.css';
+import Fabrizio from '../components/webinar/Fabrizio.jpg';
+import Rajan from '../components/webinar/Rajan.jpg';
+import Prashant from '../components/webinar/Prashant Bhatmule.jpg';
+import Franco from '../components/webinar/Franco Baraghini.jpg';
+import Lalitendu from '../components/webinar/Lalitendu Samanta.jpg';
+
 
 interface SpeakerProfile {
   name: string;
@@ -11,39 +18,46 @@ interface SpeakerProfile {
 
 const speakers: SpeakerProfile[] = [
   {
-    name: "Dr. Sarah Johnson",
-    title: "AI Research Director",
-    experience: "20+ years in AI and Machine Learning",
-    image: "/placeholder.svg",
-    bio: "Leading AI researcher with multiple patents and publications in deep learning."
+    name: "Subhash Vashisht",
+    title: "General Manager",
+    experience: "37+ years Expertise: Medical Device Development & Manufacturing Operations",
+    image: "./Subhash.jpg",
+    bio: "A highly accomplished professional with over 37 years of expertise in Medical Device Development & Manufacturing Operations. Proven track record in leading strategic initiatives."
   },
   {
-    name: "Michael Chen",
-    title: "Chief Technology Officer",
-    experience: "18 years in Software Architecture",
-    image: "/placeholder.svg",
-    bio: "Pioneer in cloud computing and distributed systems architecture."
+    name: "Fabrizio Righetti",
+    title: "Chief Transformation Officer",
+    experience: "20+ years Expertise: Business Turn-around",
+    image: Fabrizio,
+    bio: "A seasoned professional with over 20 years of expertise in business transformation and turn-around. Demonstrated success in leading organizations through complex change initiatives."
   },
   {
-    name: "Dr. Emily Rodriguez",
-    title: "Data Science Director",
-    experience: "15 years in Big Data Analytics",
-    image: "/placeholder.svg",
-    bio: "Expert in data visualization and predictive modeling."
+    name: "Rajan Wadhera",
+    title: "Member-SCALE Committee-GOI",
+    experience: "43+ years Expertise: Automotive & Farm Equipment",
+    image: Rajan,
+    bio: "A distinguished leader with over 43 years of expertise in automotive and farm equipment sectors. Strong history of driving innovation and growth through strategic leadership."
   },
   {
-    name: "James Wilson",
-    title: "Security Architect",
-    experience: "17 years in Cybersecurity",
-    image: "/placeholder.svg",
-    bio: "Specialist in enterprise security and blockchain technology."
+    name: "Prashant Bhatmula",
+    title: "SCM, Sales & Marketing",
+    experience: "35+ years Expertise: Supply Chain & Operations",
+    image: Prashant,
+    bio: "A seasoned professional with over 35 years of expertise in supply chain management and operations. Proven success in driving operational excellence and business growth."
   },
   {
-    name: "Dr. Lisa Zhang",
-    title: "Innovation Lead",
-    experience: "16 years in Product Development",
-    image: "/placeholder.svg",
-    bio: "Renowned for breakthrough innovations in IoT and smart devices."
+    name: "Franco Baraghini",
+    title: "CEO-Entrepreneur-Innovation",
+    experience: "20+ years Expertise: Innovation & Entrepreneurship",
+    image: Franco,
+    bio: "A visionary leader with over 20 years of expertise in innovation and entrepreneurship. Demonstrated success in building businesses and driving growth through innovation."
+  },
+  {
+    name: "Lalitendu Samanta",
+    title: "Corporate Head HR",
+    experience: "30+ years Expertise: Strategic HR & Operations",
+    image: Lalitendu,
+    bio: "A seasoned HR professional with over 30 years of expertise in strategic HR and operations. Proven track record in organizational development."
   }
 ];
 
@@ -54,38 +68,38 @@ const Webinar: React.FC = () => {
         {/* Intro Section */}
         <section className="text-center mb-16">
           <h1 className="text-4xl font-bold text-gray-900 mb-6">
-            Expert Insights: Industry Leaders Share Their Vision
+            Strategic Insights: Leadership Perspectives on Industry Transformation
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Join our exclusive webinar featuring renowned industry experts with over 15 years of experience.
-            Gain invaluable insights, learn about cutting-edge developments, and connect with leading professionals
-            who have shaped the industry.
+            Join our exclusive executive webinar featuring distinguished industry leaders and strategic consultants.
+            Discover cutting-edge insights on business transformation, operational excellence, and strategic innovation.
+            Connect with visionaries who have successfully navigated complex market challenges and driven organizational growth.
           </p>
         </section>
 
-        {/* Speakers Section */}
+        {/* Speakers Section */}  
         <section className="mb-16">
           <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">
             Meet Our Distinguished Speakers
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {speakers.map((speaker) => (
-              <div key={speaker.name} className="bg-white rounded-lg shadow-lg p-6">
-                <div className="aspect-w-1 aspect-h-1 mb-4">
+              <div key={speaker.name} className="bg-white rounded-lg shadow-lg p-6 speaker-card">
+                <div className="speaker-image-container">
                   <img
                     src={speaker.image}
                     alt={speaker.name}
                     className="rounded-full w-32 h-32 mx-auto object-cover"
                   />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 text-center">
+                <h3 className="text-xl font-semibold text-gray-900 text-center speaker-name">
                   {speaker.name}
                 </h3>
-                <p className="text-gray-600 text-center mb-2">{speaker.title}</p>
-                <p className="text-gray-500 text-sm text-center mb-3">
+                <p className="text-gray-600 text-center mb-2 speaker-title">{speaker.title}</p>
+                <p className="text-gray-500 text-sm text-center mb-3 speaker-experience">
                   {speaker.experience}
                 </p>
-                <p className="text-gray-700 text-center">{speaker.bio}</p>
+                <p className="text-gray-700 text-center speaker-bio">{speaker.bio}</p>
               </div>
             ))}
           </div>
