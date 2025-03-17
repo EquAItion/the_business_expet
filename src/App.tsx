@@ -14,6 +14,7 @@ import SeekerForm from "./components/Auth/SeekerForm";
 import ExpertForm from "./components/Auth/ExpertForm";
 import Webinar from "./pages/Webinar";
 import Product from "./pages/Product";
+import About from "./components/About/About";
 
 const queryClient = new QueryClient();
 
@@ -25,6 +26,7 @@ const App = () => (
       <BrowserRouter basename="/exp">
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/about" element={<About />} />
           <Route path="/network" element={<Network />} />
           <Route path="/expert/:id" element={<ExpertProfile />} />
           <Route path="/features" element={<Features />} />
