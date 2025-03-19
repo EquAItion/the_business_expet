@@ -5,49 +5,17 @@ import GlassCard from "../ui/GlassCard";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 
-// Mock expert data
-const experts = [
-  {
-    id: "1",
-    name: "Dr. Emma Thompson",
-    role: "AI Research Specialist",
-    area: "Artificial Intelligence",
-    experience: "12+ years",
-    image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
-  },
-  {
-    id: "2",
-    name: "Michael Chen",
-    role: "Financial Analyst",
-    area: "Investment Banking",
-    experience: "15+ years",
-    image: "https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
-  },
-  {
-    id: "3",
-    name: "Dr. Sarah Johnson",
-    role: "Biotech Consultant",
-    area: "Biotechnology",
-    experience: "20+ years",
-    image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
-  },
-  {
-    id: "4",
-    name: "James Wilson",
-    role: "Marketing Director",
-    area: "Digital Marketing",
-    experience: "10+ years",
-    image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
-  },
-  {
-    id: "5",
-    name: "Sophia Rodriguez",
-    role: "UX Research Lead",
-    area: "Product Design",
-    experience: "8+ years",
-    image: "https://images.unsplash.com/photo-1517841905240-472988babdf9?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
-  },
-];
+interface Expert {
+  id: string;
+  firstName: string;
+  lastName: string;
+  designation: string;
+  expertise: string;
+  workExperience: string;
+  currentOrganization: string;
+  location: string;
+  areasOfHelp: string;
+}
 
 const industries = [
   "Business strategy & Growth",
@@ -65,9 +33,35 @@ const industries = [
 
 const ExpertNetwork = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [experts, setExperts] = useState<Expert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedIndustry, setSelectedIndustry] = useState<string>("All");
   const [activeExpert, setActiveExpert] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchExperts = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/experts/profiles');
+        if (!response.ok) {
+          throw new Error('Failed to fetch expert profiles');
+        }
+        const result = await response.json();
+        if (result.success) {
+          setExperts(result.data);
+        } else {
+          throw new Error(result.message || 'Failed to load expert profiles');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load expert profiles');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchExperts();
+  }, []);
 
   // Horizontal scrolling for industries
   const scrollLeft = () => {
@@ -150,51 +144,69 @@ const ExpertNetwork = () => {
       </div>
 
       {/* Expert Profiles */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {experts.map((expert) => (
-          <GlassCard
-            key={expert.id}
-            className={cn(
-              "p-6 transition-all duration-300",
-              activeExpert === expert.id && "ring-2 ring-primary"
-            )}
-            onClick={() => setActiveExpert(expert.id === activeExpert ? null : expert.id)}
-          >
-            <div className="flex items-start gap-4">
-              <img 
-                src={expert.image} 
-                alt={expert.name}
-                className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-sm" 
-              />
-              
-              <div>
-                <h3 className="font-display font-semibold text-lg">{expert.name}</h3>
-                <p className="text-sm text-muted-foreground">{expert.role}</p>
-                
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center text-sm">
-                    <span className="font-medium mr-2">Area:</span>
-                    <span>{expert.area}</span>
-                  </div>
-                  
-                  <div className="flex items-center text-sm">
-                    <span className="font-medium mr-2">Experience:</span>
-                    <span>{expert.experience}</span>
-                  </div>
+      {loading ? (
+        <div className="text-center py-8">
+          <p>Loading expert profiles...</p>
+        </div>
+      ) : error ? (
+        <div className="text-center py-8 text-red-500">
+          <p>{error}</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {experts.slice(0, 6).map((expert) => (
+            <GlassCard
+              key={expert.id}
+              className={cn(
+                "p-6 transition-all duration-300",
+                activeExpert === expert.id && "ring-2 ring-primary"
+              )}
+              onClick={() => setActiveExpert(expert.id === activeExpert ? null : expert.id)}
+            >
+              <div className="flex flex-col items-center text-center p-2">
+                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-3xl font-semibold text-primary mb-4 border-2 border-primary/20">
+                  {expert.firstName[0]}{expert.lastName[0]}
                 </div>
                 
-                <Button 
-                  variant="link"
-                  className="mt-4 text-sm font-medium text-primary hover:text-primary/80 transition-colors p-0"
-                  onClick={() => navigate(`/expert/${expert.id}`)}
-                >
-                  View Full Profile
-                </Button>
+                <div className="w-full">
+                  <h3 className="font-display font-semibold text-xl mb-1">{expert.firstName} {expert.lastName}</h3>
+                  <p className="text-sm text-primary/80 font-medium mb-4">{expert.designation}</p>
+                  
+                  <div className="grid grid-cols-2 gap-4 mb-6 text-left">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">Expertise</p>
+                      <p className="text-sm font-medium truncate">{expert.expertise}</p>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">Experience</p>
+                      <p className="text-sm font-medium">{expert.workExperience} years</p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">Organization</p>
+                      <p className="text-sm font-medium truncate">{expert.currentOrganization}</p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">Location</p>
+                      <p className="text-sm font-medium truncate">{expert.location}</p>
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    variant="outline"
+                    className="w-full bg-white/50 hover:bg-white/80 transition-colors"
+                    onClick={() => navigate(`/expert/${expert.id}`)}
+                  >
+                    View Full Profile
+                  </Button>
+                </div>
               </div>
-            </div>
-          </GlassCard>
-        ))}
-      </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
 
       {/* Call to action */}
       <div className="mt-12 text-center">
