@@ -14,6 +14,7 @@ import SeekerForm from "./components/Auth/SeekerForm";
 import ExpertForm from "./components/Auth/ExpertForm";
 import ExpertProfileForm from "./components/Auth/ExpertProfileForm";
 import Webinar from "./pages/Webinar";
+import Registrationform from "./components/webinar/registrationform"
 import Product from "./pages/Product";
 import ExpertDashboard from "./components/dashboard/ExpertDashboard";
 import About from "./components/About/About";
@@ -38,6 +39,7 @@ const App = () => (
           <Route path="/auth/expert" element={<ExpertForm />} />
           <Route path="/auth/ExpertProfileForm" element={<ExpertProfileForm />} />
           <Route path="/webinar" element={<Webinar />} />
+          <Route path="/registrationform" element={ <Registrationform />} />
           <Route path="/product" element={<Product />} />
           <Route path="/dashboard" element={<ExpertDashboard />} />
           <Route path="*" element={<NotFound />} />
