@@ -14,7 +14,7 @@ import SeekerForm from "./components/Auth/SeekerForm";
 import ExpertForm from "./components/Auth/ExpertForm";
 import ExpertProfileForm from "./components/Auth/ExpertProfileForm";
 import Webinar from "./pages/Webinar";
-import Registrationform from "./components/webinar/registrationform";
+import Registrationform from "./components/webinar/Registrationform";
 import Product from "./pages/Product";
 import ExpertDashboard from "./components/dashboard/ExpertDashboard";
 import About from "./components/About/About";
