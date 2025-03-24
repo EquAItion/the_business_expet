@@ -12,7 +12,7 @@ const products = [
     price: 999.99,
     category: "analytics",
     features: ["Real-time processing", "Custom reporting", "API integration"],
-    image: "/products/ai-analytics.jpg"
+    
   },
   {
     id: 2,
@@ -21,7 +21,7 @@ const products = [
     price: 499.99,
     category: "optimization",
     features: ["Auto-tuning", "Performance metrics", "Model comparison"],
-    image: "/products/neural-network.jpg"
+   
   },
   {
     id: 3,
@@ -30,7 +30,7 @@ const products = [
     price: 799.99,
     category: "development",
     features: ["Code templates", "Testing suite", "Documentation"],
-    image: "/products/dev-toolkit.jpg"
+    
   },
 ];
 
@@ -112,11 +112,7 @@ const ProductShowcase = () => {
             {/* Product image */}
             <div className="relative h-48 rounded-t-lg overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-purple-500/20" />
-              <img
-                src={product.image}
-                alt={product.name}
-                className="w-full h-full object-cover"
-              />
+              
             </div>
 
             {/* Product details */}

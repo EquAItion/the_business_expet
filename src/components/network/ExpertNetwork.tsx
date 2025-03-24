@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import GlassCard from "../ui/GlassCard";
@@ -62,6 +61,8 @@ const ExpertNetwork = () => {
 
     fetchExperts();
   }, []);
+
+
 
   // Horizontal scrolling for industries
   const scrollLeft = () => {
@@ -197,7 +198,10 @@ const ExpertNetwork = () => {
                   <Button 
                     variant="outline"
                     className="w-full bg-white/50 hover:bg-white/80 transition-colors"
-                    onClick={() => navigate(`/expert/${expert.id}`)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/experts/${expert.id}`); // Make sure this matches the route parameter
+                    }}
                   >
                     View Full Profile
                   </Button>
@@ -219,6 +223,7 @@ const ExpertNetwork = () => {
       </div>
     </section>
   );
+  
 };
 
 export default ExpertNetwork;

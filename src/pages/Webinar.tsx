@@ -6,6 +6,7 @@ import Rajan from '../components/webinar/Rajan.jpg';
 import Prashant from '../components/webinar/Prashant Bhatmule.jpg';
 import Franco from '../components/webinar/Franco Baraghini.jpg';
 import Lalitendu from '../components/webinar/Lalitendu Samanta.jpg';
+import { useNavigate } from 'react-router-dom';
 
 
 interface SpeakerProfile {
@@ -62,6 +63,10 @@ const speakers: SpeakerProfile[] = [
 ];
 
 const Webinar: React.FC = () => {
+  const navigate =useNavigate();
+  const handleRedirect = () => {
+    navigate("/webinarsection");
+  }
   return (
     <Layout>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 mt-16">
@@ -125,10 +130,7 @@ const Webinar: React.FC = () => {
         <section className="text-center">
           <button
             className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg text-xl shadow-lg transform transition hover:scale-105"
-            onClick={() => {
-              // Add registration logic here
-              console.log('Register clicked');
-            }}
+            onClick={handleRedirect}
           >
             Register Now
           </button>

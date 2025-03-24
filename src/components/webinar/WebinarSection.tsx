@@ -1,6 +1,8 @@
 import { useState } from "react";
 import GlassCard from "@/components/ui/GlassCard";
 import { cn } from "@/lib/utils";
+import Footer from "../layout/Footer";
+import Navbar from "../layout/Navbar";
 
 const areasOfInterest = [
   "AI Analytics",
@@ -35,15 +37,17 @@ const WebinarSection = () => {
   };
 
   return (
+    <>
+    <Navbar />
     <section id="webinar" className="section-container relative pt-24">
       <div className="container mx-auto px-4">
         <div className="text-center mb-16">
         <span className="badge badge-blue mb-4">Upcoming Webinar</span>
         <h2 className="section-title">
-          AI Innovation <span className="text-gradient">Masterclass</span>
+          Experts <span className="text-gradient">Masterclass</span>
         </h2>
         <p className="section-subtitle mx-auto">
-          Join our expert-led webinar to explore the latest trends and innovations in AI technology.
+        Join our experts-led webinar at Expertise Station to explore business challenges and effective solutions.
         </p>
       </div>
 
@@ -56,9 +60,7 @@ const WebinarSection = () => {
             <div>
               <h4 className="text-lg font-semibold mb-2">About the Webinar</h4>
               <p className="text-muted-foreground">
-                Discover how AI is transforming industries and learn practical implementation
-                strategies from industry experts. This interactive session will cover cutting-edge
-                AI technologies and their real-world applications.
+              "Join our Expertise Station webinar to explore how AI is transforming industries. Learn practical implementation strategies from industry experts in this interactive session, covering cutting-edge AI technologies and their real-world applications."
               </p>
             </div>
 
@@ -195,6 +197,8 @@ const WebinarSection = () => {
       </div>
     </div>
   </section>
+<Footer />
+</>
   );
 };
 

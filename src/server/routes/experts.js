@@ -4,27 +4,62 @@ const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../server');
 
-// Middleware to verify JWT token
+
+// Middleware to verify JWT
 const verifyToken = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-        return res.status(401).json({
-            success: false,
-            message: 'No token provided'
-        });
-    }
+    const token = req.headers['authorization'];
+    if (!token) return res.status(403).send('Token is required');
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        const decoded = jwt.verify(token, 'your_jwt_secret');
         req.user = decoded;
         next();
-    } catch (error) {
-        return res.status(401).json({
-            success: false,
-            message: 'Invalid token'
-        });
+    } catch (err) {
+        return res.status(401).send('Invalid Token');
     }
 };
+
+// GET endpoint to fetch expert profile by ID
+// router.get('/api/experts/profiles/:id', verifyToken, async (req, res) => {
+
+//     try {
+//         const { id } = req.params;
+//         const [rows] = await pool.query('SELECT * FROM experts WHERE id = ?', [id]);
+
+//         if (rows.length === 0) {
+//             return res.status(404).json({ success: false, message: 'Expert not found' });
+//         }
+
+//         res.json({ success: true, expert: rows[0] });
+//     } catch (err) {
+//         res.status(500).send('Server error');
+//     }
+// });
+
+// Fetch expert profile by ID
+router.get('/profiles/:id', async (req, res) => {
+    const expertId = req.params.id;
+    try {
+        const [rows] = await pool.execute('SELECT * FROM expert_profiles WHERE id = ?', [expertId]);
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: `Expert with ID ${expertId} not found`
+            });
+        }
+        res.json({
+            success: true,
+            data: rows[0]
+        });
+    } catch (error) {
+        console.error('Error fetching expert profile:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch expert profile'
+        });
+    }
+});
+
 
 // Create expert profile
 router.post('/profile', verifyToken, async (req, res) => {
@@ -364,6 +399,58 @@ router.put('/profile', verifyToken, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Error updating expert profile'
+        });
+    }
+});
+
+// Get expert profile by ID
+router.get('/profiles/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [profiles] = await pool.execute(
+            'SELECT * FROM expert_profiles WHERE id = ?',
+            [id]
+        );
+
+        if (profiles.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Expert profile not found'
+            });
+        }
+
+        const profile = profiles[0];
+        const formattedProfile = {
+            id: profile.id,
+            firstName: profile.first_name,
+            lastName: profile.last_name,
+            designation: profile.designation,
+            dateOfBirth: profile.date_of_birth,
+            phoneNumber: profile.phone_number,
+            workExperience: profile.work_experience,
+            currentOrganization: profile.current_organization,
+            location: profile.location,
+            expertise: profile.expertise,
+            areasOfHelp: profile.areas_of_help,
+            audioPricing: profile.audio_pricing,
+            videoPricing: profile.video_pricing,
+            chatPricing: profile.chat_pricing,
+            linkedinUrl: profile.linkedin_url,
+            instagramUrl: profile.instagram_url,
+            youtubeUrl: profile.youtube_url,
+            twitterUrl: profile.twitter_url,
+        };
+
+        res.json({
+            success: true,
+            data: formattedProfile
+        });
+    } catch (error) {
+        console.error('Error fetching expert profile by ID:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching expert profile'
         });
     }
 });
