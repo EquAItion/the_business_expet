@@ -71,13 +71,16 @@ const Webinar: React.FC = () => {
   return (
     <>
     <Navbar/>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 mt-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 mt-12">
         {/* Intro Section */}
-        <section className="text-center mb-16">
-          <h1 className="text-4xl font-bold text-gray-900 mb-6">
+        <section className="text-center mb-5 ">
+          {/* <h1 className="text-4xl font-bold text-gray-900 mb-6">
             Strategic Insights: Leadership Perspectives on Industry Transformation
-          </h1>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+          </h1> */}
+          <h2 className="section-title">
+          Strategic Insights: <span className="text-gradient"> Leadership Perspectives on Industry Transformation </span>
+          </h2>
+          <p className="section-subtitle text-xl text-gray-600 max-w-3xl mx-auto">
             Join our exclusive executive webinar featuring distinguished industry leaders and strategic consultants.
             Discover cutting-edge insights on business transformation, operational excellence, and strategic innovation.
             Connect with visionaries who have successfully navigated complex market challenges and driven organizational growth.
@@ -85,8 +88,8 @@ const Webinar: React.FC = () => {
         </section>
 
         {/* Speakers Section */}  
-        <section className="mb-16">
-          <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">
+        <section className="mb-10">
+          <h2 className="text-3xl font-bold text-center text-gray-900 mb-5">
             Meet Our Distinguished Speakers
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
