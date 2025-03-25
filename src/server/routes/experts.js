@@ -5,36 +5,28 @@ const jwt = require('jsonwebtoken');
 const { pool } = require('../server');
 
 
-// Middleware to verify JWT
+// Middleware to verify JWT token
 const verifyToken = (req, res, next) => {
-    const token = req.headers['authorization'];
-    if (!token) return res.status(403).send('Token is required');
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+        return res.status(401).json({
+            success: false,
+            message: 'No token provided'
+        });
+    }
 
     try {
-        const decoded = jwt.verify(token, 'your_jwt_secret');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
         req.user = decoded;
         next();
-    } catch (err) {
-        return res.status(401).send('Invalid Token');
+    } catch (error) {
+        return res.status(401).json({
+            success: false,
+            message: 'Invalid token'
+        });
     }
 };
 
-// GET endpoint to fetch expert profile by ID
-// router.get('/api/experts/profiles/:id', verifyToken, async (req, res) => {
-
-//     try {
-//         const { id } = req.params;
-//         const [rows] = await pool.query('SELECT * FROM experts WHERE id = ?', [id]);
-
-//         if (rows.length === 0) {
-//             return res.status(404).json({ success: false, message: 'Expert not found' });
-//         }
-
-//         res.json({ success: true, expert: rows[0] });
-//     } catch (err) {
-//         res.status(500).send('Server error');
-//     }
-// });
 
 // Fetch expert profile by ID
 router.get('/profiles/:id', async (req, res) => {

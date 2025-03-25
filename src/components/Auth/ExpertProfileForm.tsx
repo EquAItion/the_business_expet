@@ -33,8 +33,6 @@ interface ExpertProfileFormData {
   twitter: string;
 }
 
-
-
 const ExpertProfileForm: React.FC = () => {
   const navigate = useNavigate();
   const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm<ExpertProfileFormData>();
@@ -56,34 +54,29 @@ const ExpertProfileForm: React.FC = () => {
       const signupData = JSON.parse(localStorage.getItem('expertSignupData') || '{}');
       const completeProfile = {
         ...data,
-        dateOfBirth: format(data.dateOfBirth, 'yyyy-MM-dd')
+        dateOfBirth: format(data.dateOfBirth, 'yyyy-MM-dd'),
       };
   
-      // Make API call to save the expert profile
       const response = await fetch('http://localhost:5000/api/experts/profile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${signupData.token}`
+          'Authorization': `Bearer ${signupData.token}`,
         },
-        body: JSON.stringify(completeProfile)
+        body: JSON.stringify(completeProfile),
       });
   
-      const result = await response.json();
-  
       if (!response.ok) {
-        throw new Error(result.message || 'Failed to create expert profile');
+        const errorText = await response.text(); // Read the response as plain text
+        throw new Error(errorText);
       }
   
-      // Show success toast with profile completion message
+      const result = await response.json();
       toast.success('Your profile has been completed successfully! Redirecting to dashboard...');
-      // Add a small delay before navigation to ensure toast is visible
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 2000);
+      navigate('/dashboard');
     } catch (error) {
       console.error('Error creating profile:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to create profile');
+      toast.error(error.message || 'Failed to create profile');
     }
   };
 
