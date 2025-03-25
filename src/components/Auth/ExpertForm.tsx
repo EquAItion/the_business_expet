@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../layout/Navbar';
 import './auth.css';
 import { toast } from 'react-hot-toast';
+import Footer from '../layout/Footer';
 
 const SocialIcons = () => (
     <div className="social-container">
@@ -165,6 +166,7 @@ const ExpertForm: React.FC = () => {
                     </div>
                 </div>
             </div>
+          <Footer/>
         </>
     );
 };

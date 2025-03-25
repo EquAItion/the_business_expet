@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../layout/Navbar';
 import './auth.css'
 import { toast } from 'sonner';
+import Footer from '../layout/Footer';
 
 const SocialIcons = () => (
     <div className="social-container">
@@ -143,6 +144,7 @@ const SeekerForm: React.FC = () => {
                     </div>
                 </div>
             </div>
+           <Footer/>
         </>
     );
 };
