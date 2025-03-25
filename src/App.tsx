@@ -19,6 +19,8 @@ import ExpertDashboard from "./components/dashboard/ExpertDashboard";
 import About from "./components/About/About";
 import WebinarSection from "./components/webinar/WebinarSection";
 import ProductShowcase from "./components/products/ProductShowcase";
+import Onboarding from "./pages/Onboarding";
+import AIdashboard from "./pages/AIdashboard";
 
 
 const queryClient = new QueryClient();
@@ -36,6 +38,8 @@ const App = () => (
          <Route path="/experts/:id" element={<ExpertProfile />} />
           <Route path="/features" element={<Features />} />
           <Route path="/insights" element={<Insights />} />
+          <Route path="/onboarding" element={<Onboarding />} />
+          <Route path="/aidashboard" element={<AIdashboard />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/auth/seeker" element={<SeekerForm />} />
           <Route path="/auth/expert" element={<ExpertForm />} />
@@ -45,6 +49,7 @@ const App = () => (
           <Route path="/products" element={<Products />} />
           <Route path="/productshowcase" element={<ProductShowcase />} />
           <Route path="/dashboard" element={<ExpertDashboard />} />
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

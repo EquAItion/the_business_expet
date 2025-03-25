@@ -1,8 +1,8 @@
-
 import { useEffect, useRef, useState } from "react";
 import GlassCard from "@/components/ui/GlassCard";
 import { cn } from "@/lib/utils";
 import { Brain, LineChart, TrendingUp } from "lucide-react";
+import { useNavigate } from 'react-router-dom';
 
 // Mock data for visualizations
 const insightCategories = [
@@ -147,6 +147,11 @@ const DataVisualization = ({ activeCategory }: { activeCategory: string }) => {
 
 const InsightsVisualization = () => {
   const [activeCategory, setActiveCategory] = useState("market");
+  const navigate = useNavigate(); // Add this line
+
+  const handleCustomReport = () => {
+    navigate('/onboarding');
+  };
 
   return (
     <section id="insights" className="section-container relative">
@@ -206,7 +211,10 @@ const InsightsVisualization = () => {
                 Need specialized analysis for your industry? 
                 Request a custom insight report from our experts.
               </p>
-              <button className="btn-outline text-sm w-full">
+              <button 
+                className="btn-outline text-sm w-full"
+                onClick={handleCustomReport}
+              >
                 Request Custom Report
               </button>
             </div>
