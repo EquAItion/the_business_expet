@@ -4,7 +4,7 @@ import { FaPhone,FaEnvelope,FaMapMarkerAlt } from "react-icons/fa";
 
 const Footer = () => {
   return (
-    <footer id="contact" className="bg-gradient-to-b from-transparent to-secondary/30 pt-24 pb-12">
+    <footer id="contact" className="bg-gradient-to-b from-transparent to-secondary/30 pt-5 pb-5">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 pb-12 space-x-0">
           <div>

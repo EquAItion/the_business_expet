@@ -133,6 +133,7 @@ const Onboarding = () => {
       
       // Redirect to dashboard
       setTimeout(() => {
+        window.scrollTo({ top:0, behavior:'smooth'});
         navigate('/aidashboard');
       }, 1500);
     }, 2000);

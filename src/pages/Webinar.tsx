@@ -1,5 +1,4 @@
 import React from 'react';
-import Layout from "@/components/layout";
 import '../components/webinar/Webinar.css';
 import Fabrizio from '../components/webinar/Fabrizio.jpg';
 import Rajan from '../components/webinar/Rajan.jpg';
@@ -7,7 +6,8 @@ import Prashant from '../components/webinar/Prashant Bhatmule.jpg';
 import Franco from '../components/webinar/Franco Baraghini.jpg';
 import Lalitendu from '../components/webinar/Lalitendu Samanta.jpg';
 import { useNavigate } from 'react-router-dom';
-
+import Navbar from '@/components/layout/Navbar';
+import Footer from '@/components/layout/Footer';
 
 interface SpeakerProfile {
   name: string;
@@ -65,10 +65,12 @@ const speakers: SpeakerProfile[] = [
 const Webinar: React.FC = () => {
   const navigate =useNavigate();
   const handleRedirect = () => {
+    window.scrollTo({ top:0, behavior: 'smooth'});
     navigate("/webinarsection");
   }
   return (
-    <Layout>
+    <>
+    <Navbar/>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 mt-16">
         {/* Intro Section */}
         <section className="text-center mb-16">
@@ -136,7 +138,8 @@ const Webinar: React.FC = () => {
           </button>
         </section>
       </div>
-    </Layout>
+      <Footer/>
+    </>
   );
 };
 

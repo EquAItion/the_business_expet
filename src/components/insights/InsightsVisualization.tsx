@@ -150,6 +150,7 @@ const InsightsVisualization = () => {
   const navigate = useNavigate(); // Add this line
 
   const handleCustomReport = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth'});
     navigate('/onboarding');
   };
 
