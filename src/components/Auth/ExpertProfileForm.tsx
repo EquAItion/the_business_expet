@@ -12,6 +12,7 @@ import Navbar from '../layout/Navbar';
 import Footer from '../layout/Footer';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
+import { differenceInYears } from 'date-fns';
 
 interface ExpertProfileFormData {
   firstName: string;
@@ -33,9 +34,31 @@ interface ExpertProfileFormData {
   twitter: string;
 }
 
+// Add a helper function to format the date
+// const formatDateOfBirth = (date: Date | undefined) => {
+//   if (!date) return 'Select your date of birth';
+//   return format(date, 'MMMM dd, yyyy');
+// };
+
 const ExpertProfileForm: React.FC = () => {
   const navigate = useNavigate();
-  const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm<ExpertProfileFormData>();
+  const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm<ExpertProfileFormData>({
+    defaultValues: {
+      dateOfBirth: undefined,
+    },
+  });
+
+  // Add this after the useForm hook
+  const [calendarView, setCalendarView] = React.useState<'days' | 'months' | 'years'>('days');
+  const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = React.useState(new Date().getMonth());
+
+  // Add these helper functions
+  const years = Array.from({ length: 74 }, (_, i) => new Date().getFullYear() - 73 + i);
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
 
   React.useEffect(() => {
     // Load expert signup data from localStorage
@@ -77,6 +100,19 @@ const ExpertProfileForm: React.FC = () => {
     } catch (error) {
       console.error('Error creating profile:', error);
       toast.error(error.message || 'Failed to create profile');
+    }
+  };
+
+  const handleDateSelect = (date: Date | undefined) => {
+    if (date) {
+      const age = differenceInYears(new Date(), date);
+      if (age < 18) {
+        toast.error('You must be at least 18 years old');
+        return;
+      }
+      setValue('dateOfBirth', date);
+      setSelectedYear(date.getFullYear());
+      setSelectedMonth(date.getMonth());
     }
   };
 
@@ -131,24 +167,123 @@ const ExpertProfileForm: React.FC = () => {
                     <Button
                       variant="outline"
                       className={cn(
-                        'w-full justify-start text-left font-normal',
-                        !watch('dateOfBirth') && 'text-muted-foreground'
+                        'w-full justify-start text-left font-normal hover:bg-secondary/80',
+                        'border-2 rounded-md px-4 py-2',
+                        !watch('dateOfBirth') && 'text-muted-foreground',
+                        'focus:ring-2 focus:ring-primary/20'
                       )}
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {watch('dateOfBirth') ? format(watch('dateOfBirth'), 'PPP') : <span>Pick a date</span>}
+                      <CalendarIcon className="mr-2 h-5 w-5 text-primary" />
+                      {watch('dateOfBirth') ? format(watch('dateOfBirth'), 'PPP') : <span>Select your date of birth</span>}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={watch('dateOfBirth')}
-                      onSelect={(date) => setValue('dateOfBirth', date)}
-                      disabled={(date) =>
-                        date > new Date() || date < new Date('1900-01-01')
-                      }
-                      initialFocus
-                    />
+                  <PopoverContent className="w-auto p-0 bg-card border-2" align="start">
+                    <div className="p-2">
+                      {/* View Selector */}
+                      <div className="flex justify-between mb-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setCalendarView('days')}
+                          className={cn(
+                            'text-sm font-medium',
+                            calendarView === 'days' && 'bg-secondary'
+                          )}
+                        >
+                          Day
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setCalendarView('months')}
+                          className={cn(
+                            'text-sm font-medium',
+                            calendarView === 'months' && 'bg-secondary'
+                          )}
+                        >
+                          Month
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setCalendarView('years')}
+                          className={cn(
+                            'text-sm font-medium',
+                            calendarView === 'years' && 'bg-secondary'
+                          )}
+                        >
+                          Year
+                        </Button>
+                      </div>
+
+                      {calendarView === 'days' && (
+                        <Calendar
+                          mode="single"
+                          selected={watch('dateOfBirth')}
+                          onSelect={handleDateSelect}
+                          month={new Date(selectedYear, selectedMonth)}
+                          disabled={(date) =>
+                            date > new Date('2005-01-01') || date < new Date('1950-01-01')
+                          }
+                          initialFocus
+                          className="rounded-md shadow-md"
+                          classNames={{
+                            day_selected: "bg-primary text-primary-foreground hover:bg-primary",
+                            day_today: "bg-accent text-accent-foreground",
+                            day_outside: "text-muted-foreground opacity-50",
+                            day_disabled: "text-muted-foreground opacity-50",
+                            nav_button: "hover:bg-secondary",
+                            nav_button_previous: "absolute left-1",
+                            nav_button_next: "absolute right-1",
+                            caption: "capitalize"
+                          }}
+                        />
+                      )}
+
+                      {calendarView === 'months' && (
+                        <div className="grid grid-cols-3 gap-2 p-2">
+                          {months.map((month, index) => (
+                            <Button
+                              key={month}
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedMonth(index);
+                                setCalendarView('days');
+                              }}
+                              className={cn(
+                                'text-sm',
+                                selectedMonth === index && 'bg-primary text-primary-foreground'
+                              )}
+                            >
+                              {month.slice(0, 3)}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+
+                      {calendarView === 'years' && (
+                        <div className="grid grid-cols-4 gap-2 p-2 h-[280px] overflow-y-auto">
+                          {years.map((year) => (
+                            <Button
+                              key={year}
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedYear(year);
+                                setCalendarView('months');
+                              }}
+                              className={cn(
+                                'text-sm',
+                                selectedYear === year && 'bg-primary text-primary-foreground'
+                              )}
+                            >
+                              {year}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </PopoverContent>
                 </Popover>
                 {errors.dateOfBirth && (

@@ -200,6 +200,7 @@ const ExpertNetwork = () => {
                     className="w-full bg-white/50 hover:bg-white/80 transition-colors"
                     onClick={(e) => {
                       e.stopPropagation();
+                      window.scrollTo({top: 0, behavior: 'smooth'});
                       navigate(`/experts/${expert.id}`); // Make sure this matches the route parameter
                     }}
                   >
