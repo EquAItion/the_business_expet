@@ -26,7 +26,6 @@ const verifyToken = (req, res, next) => {
     }
 };
 
-
 // Fetch expert profile by ID
 router.get('/profiles/:id', async (req, res) => {
     const expertId = req.params.id;
@@ -99,8 +98,8 @@ router.post('/profile', verifyToken, async (req, res) => {
 
         // Check if profile already exists
         const [existingProfiles] = await pool.execute(
-            'SELECT id FROM expert_profiles WHERE user_id = ?',
-            [req.user.id]
+            'SELECT id FROM expert_profiles WHERE id = ?',
+            [req.id]
         );
 
         if (existingProfiles.length > 0) {
@@ -318,78 +317,113 @@ router.put('/profile', verifyToken, async (req, res) => {
         }
 
         const {
-            firstName,
-            lastName,
+            first_name,
+            last_name,
             designation,
-            dateOfBirth,
-            phoneNumber,
-            workExperience,
-            currentOrganization,
+            work_experience,
+            current_organization,
             location,
             expertise,
-            areasOfHelp,
-            audioPricing,
-            videoPricing,
-            chatPricing,
-            linkedinUrl,
-            instagramUrl,
-            youtubeUrl,
-            twitterUrl
+            areas_of_help,
+            phone_number,
+            video_pricing,
+            audio_pricing,
+            chat_pricing,
+            linkedin,
+            twitter,
+            instagram
         } = req.body;
 
         // Update expert profile
-        await pool.execute(
-            `UPDATE expert_profiles SET
-                first_name = ?,
-                last_name = ?,
-                designation = ?,
-                date_of_birth = ?,
-                phone_number = ?,
-                work_experience = ?,
-                current_organization = ?,
-                location = ?,
-                expertise = ?,
-                areas_of_help = ?,
-                audio_pricing = ?,
-                video_pricing = ?,
-                chat_pricing = ?,
-                linkedin_url = ?,
-                instagram_url = ?,
-                youtube_url = ?,
-                twitter_url = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = ?`,
+        const [result] = await pool.execute(
+            `UPDATE expert_profiles 
+             SET first_name = ?,
+                 last_name = ?,
+                 designation = ?,
+                 work_experience = ?,
+                 current_organization = ?,
+                 location = ?,
+                 expertise = ?,
+                 areas_of_help = ?,
+                 phone_number = ?,
+                 video_pricing = ?,
+                 audio_pricing = ?,
+                 chat_pricing = ?,
+                 linkedin_url = ?,
+                 twitter_url = ?,
+                 instagram_url = ?,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = ?`,
             [
-                firstName,
-                lastName,
+                first_name,
+                last_name,
                 designation,
-                dateOfBirth,
-                phoneNumber,
-                workExperience,
-                currentOrganization,
+                work_experience,
+                current_organization,
                 location,
                 expertise,
-                areasOfHelp,
-                audioPricing,
-                videoPricing,
-                chatPricing,
-                linkedinUrl || null,
-                instagramUrl || null,
-                youtubeUrl || null,
-                twitterUrl || null,
+                areas_of_help,
+                phone_number,
+                video_pricing,
+                audio_pricing,
+                chat_pricing,
+                linkedin || null,
+                twitter || null,
+                instagram || null,
                 req.user.id
             ]
         );
 
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Expert profile not found'
+            });
+        }
+
+        // Fetch updated profile
+        const [updatedProfile] = await pool.execute(
+            'SELECT * FROM expert_profiles WHERE user_id = ?',
+            [req.user.id]
+        );
+
         res.json({
             success: true,
-            message: 'Expert profile updated successfully'
+            message: 'Profile updated successfully',
+            data: {
+                first_name: updatedProfile[0].first_name,
+                last_name: updatedProfile[0].last_name,
+                designation: updatedProfile[0].designation,
+                work_experience: updatedProfile[0].work_experience,
+                current_organization: updatedProfile[0].current_organization,
+                location: updatedProfile[0].location,
+                expertise: updatedProfile[0].expertise,
+                areas_of_help: updatedProfile[0].areas_of_help,
+                phone_number: updatedProfile[0].phone_number,
+                video_pricing: updatedProfile[0].video_pricing,
+                audio_pricing: updatedProfile[0].audio_pricing,
+                chat_pricing: updatedProfile[0].chat_pricing,
+                linkedin: updatedProfile[0].linkedin_url,
+                twitter: updatedProfile[0].twitter_url,
+                instagram: updatedProfile[0].instagram_url
+            }
         });
+
     } catch (error) {
         console.error('Error updating expert profile:', error);
+        
+        // Handle specific database errors
+        if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user reference'
+            });
+        }
+
         res.status(500).json({
             success: false,
-            message: 'Error updating expert profile'
+            message: 'Error updating expert profile',
+            error: process.env.NODE_ENV === 'development' ? error.message : 'An unexpected error occurred'
         });
     }
 });
@@ -445,5 +479,7 @@ router.get('/profiles/:id', async (req, res) => {
         });
     }
 });
+
+
 
 module.exports = router;

@@ -3,6 +3,23 @@ import GlassCard from "@/components/ui/GlassCard";
 import { cn } from "@/lib/utils";
 import Footer from "../layout/Footer";
 import Navbar from "../layout/Navbar";
+import { toast } from "sonner";
+
+interface FormData {
+  name: string;
+  profession: string;
+  email: string;
+  phone: string;
+  areaOfInterest: string;
+}
+
+const initialFormData: FormData = {
+  name: "",
+  profession: "",
+  email: "",
+  phone: "",
+  areaOfInterest: ""
+};
 
 const areasOfInterest = [
   "AI Analytics",
@@ -14,13 +31,9 @@ const areasOfInterest = [
 ];
 
 const WebinarSection = () => {
-  const [formData, setFormData] = useState({
-    name: "",
-    profession: "",
-    email: "",
-    phone: "",
-    areaOfInterest: ""
-  });
+  const [formData, setFormData] = useState<FormData>(initialFormData);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -28,12 +41,61 @@ const WebinarSection = () => {
       ...prev,
       [name]: value
     }));
+    setError('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission here
-    console.log("Form submitted:", formData);
+    setIsLoading(true);
+    setError("");
+
+    try {
+      // Validate all fields
+      const missingFields = Object.entries(formData)
+        .filter(([_, value]) => !value)
+        .map(([key]) => key);
+
+      if (missingFields.length > 0) {
+        toast.error(`Please fill in all fields: ${missingFields.join(", ")}`);
+        return;
+      }
+
+      const response = await fetch('http://localhost:5000/api/webinar/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          profession: formData.profession,
+          email: formData.email,
+          phone: formData.phone,
+          areaOfInterest: formData.areaOfInterest
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Registration failed');
+      }
+
+      // Clear form on success
+      setFormData(initialFormData);
+      toast.success(data.message || "Registration successful!");
+
+    } catch (error) {
+      console.error('Registration error:', error);
+      
+      if (!navigator.onLine) {
+        toast.error('Please check your internet connection');
+        return;
+      }
+
+      toast.error(error instanceof Error ? error.message : 'Failed to register');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -175,9 +237,13 @@ const WebinarSection = () => {
 
             <button
               type="submit"
-              className="btn-primary w-full py-3 text-center"
+              className={cn(
+                "btn-primary w-full py-3 text-center",
+                isLoading && "opacity-50 cursor-not-allowed"
+              )}
+              disabled={isLoading}
             >
-              Register for Webinar
+              {isLoading ? "Registering..." : "Register for Webinar"}
             </button>
           </form>
         </GlassCard>
