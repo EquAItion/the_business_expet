@@ -1,10 +1,9 @@
 import { FC } from "react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
-import Real from '../components/products/Real Estate.jpg';
-import Cab from '../components/products/Cab Booking.jpg';
-import Parcel from '../components/products/Parcel Booking.jpg';
-
+import Real from '@/img/products/Real Estate.jpg';
+import Cab from '@/img/products/Cab Booking.jpg';
+import Parcel from '@/img/products/Parcel Booking.jpg';
 
 const products = [
   {

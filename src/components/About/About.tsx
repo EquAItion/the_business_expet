@@ -2,9 +2,9 @@ import React from "react";
 import "./About.css";
 import { Link } from "react-router-dom";
 import Navbar from "../layout/Navbar";
-import sunil from "./sunil.jpg";
-import mitan from "./mitan.jpg";
-import rekha from "./rekha.jpg";
+import sunil from "@/img/about/sunil.jpg";
+import mitan from "@/img/about/mitan.jpg";
+import rekha from "@/img/about/rekha.jpg";
 import Footer from "../layout/Footer";
 
 interface TeamMember {
@@ -69,7 +69,7 @@ const About: React.FC = () => {
         ))}
       </div>
 
-      <h2 className="section-heading">Our Leadership Team</h2>
+      {/* <h2 className="section-heading">Our Leadership Team</h2>
       <div className="team-section">
         {teamMembers.map((member) => (
           <div className="team-card" key={member.name}>
@@ -78,7 +78,7 @@ const About: React.FC = () => {
             <p>{member.role}</p>
           </div>
         ))}
-      </div>
+      </div> */}
     </div>
     <Footer />
   </div>

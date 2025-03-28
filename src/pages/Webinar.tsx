@@ -1,10 +1,11 @@
 import React from 'react';
 import '../components/webinar/Webinar.css';
-import Fabrizio from '../components/webinar/Fabrizio.jpg';
-import Rajan from '../components/webinar/Rajan.jpg';
-import Prashant from '../components/webinar/Prashant Bhatmule.jpg';
-import Franco from '../components/webinar/Franco Baraghini.jpg';
-import Lalitendu from '../components/webinar/Lalitendu Samanta.jpg';
+import Subhash from '@/img/webinar/Subhash.jpg'
+import Fabrizio from '@/img/webinar/Fabrizio.jpg';
+import Rajan from '@/img/webinar/Rajan.jpg';
+import Prashant from '@/img/webinar/Prashant Bhatmule.jpg';
+import Franco from '@/img/webinar/Franco Baraghini.jpg';
+import Lalitendu from '@/img/webinar/Lalitendu Samanta.jpg';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
@@ -22,7 +23,7 @@ const speakers: SpeakerProfile[] = [
     name: "Subhash Vashisht",
     title: "General Manager",
     experience: "37+ years Expertise: Medical Device Development & Manufacturing Operations",
-    image: "./Subhash.jpg",
+    image: Subhash,
     bio: "A highly accomplished professional with over 37 years of expertise in Medical Device Development & Manufacturing Operations. Proven track record in leading strategic initiatives."
   },
   {
