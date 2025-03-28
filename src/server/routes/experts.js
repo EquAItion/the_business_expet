@@ -96,10 +96,18 @@ router.post('/profile', verifyToken, async (req, res) => {
             });
         }
 
+        // Add validation for numeric fields
+        if (isNaN(parseFloat(audioPricing)) || isNaN(parseFloat(videoPricing)) || isNaN(parseFloat(chatPricing))) {
+            return res.status(400).json({
+                success: false,
+                message: 'Pricing fields must be valid numbers'
+            });
+        }
+
         // Check if profile already exists
         const [existingProfiles] = await pool.execute(
-            'SELECT id FROM expert_profiles WHERE id = ?',
-            [req.id]
+            'SELECT id FROM expert_profiles WHERE user_id = ?',
+            [req.user.id]
         );
 
         if (existingProfiles.length > 0) {
@@ -308,7 +316,6 @@ router.get('/profiles', async (req, res) => {
 // Update expert profile
 router.put('/profile', verifyToken, async (req, res) => {
     try {
-        // Verify user is an expert
         if (req.user.role !== 'expert') {
             return res.status(403).json({
                 success: false,
@@ -334,7 +341,16 @@ router.put('/profile', verifyToken, async (req, res) => {
             instagram
         } = req.body;
 
-        // Update expert profile
+        // Validate numeric fields
+        if (video_pricing && isNaN(parseFloat(video_pricing)) || 
+            audio_pricing && isNaN(parseFloat(audio_pricing)) || 
+            chat_pricing && isNaN(parseFloat(chat_pricing))) {
+            return res.status(400).json({
+                success: false,
+                message: 'Pricing fields must be valid numbers'
+            });
+        }
+
         const [result] = await pool.execute(
             `UPDATE expert_profiles 
              SET first_name = ?,
@@ -381,13 +397,19 @@ router.put('/profile', verifyToken, async (req, res) => {
             });
         }
 
-        // Fetch updated profile
         const [updatedProfile] = await pool.execute(
             'SELECT * FROM expert_profiles WHERE user_id = ?',
             [req.user.id]
         );
 
-        res.json({
+        if (updatedProfile.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Updated profile not found'
+            });
+        }
+
+        return res.json({
             success: true,
             message: 'Profile updated successfully',
             data: {
@@ -408,7 +430,6 @@ router.put('/profile', verifyToken, async (req, res) => {
                 instagram: updatedProfile[0].instagram_url
             }
         });
-
     } catch (error) {
         console.error('Error updating expert profile:', error);
         
