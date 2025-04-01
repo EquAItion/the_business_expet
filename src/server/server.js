@@ -1,8 +1,7 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
-
+require('dotenv').config();
 const app = express();
 
 // Middleware
@@ -73,7 +72,7 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
 
 // Export pool for use in other files

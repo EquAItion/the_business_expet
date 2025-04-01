@@ -23,6 +23,8 @@ import {
   FaBriefcase
 } from 'react-icons/fa';
 import { Input } from '@/components/ui/input';
+import { useNavigate } from 'react-router-dom';
+import { toast } from "@/components/ui/use-toast";
 
 interface ExpertProfile {
   first_name: string;
@@ -35,9 +37,9 @@ interface ExpertProfile {
   areas_of_help: string;
   phone_number: string;
   email: string;
-  video_price?: number;
-  audio_price?: number;
-  chat_price?: number;
+  video_pricing?: number;
+  audio_pricing?: number;
+  chat_pricing?: number;
   linkedin?: string;
   twitter?: string;
   instagram?: string;
@@ -52,117 +54,266 @@ interface Meeting {
   clientName: string;
 }
 
+// Add these interfaces at the top of the file
+interface EditingState {
+  personal: boolean;
+  contact: boolean;
+  pricing: boolean;
+}
+
+// Add this interface with existing interfaces
+interface ToastProps {
+  title?: string;
+  description: string;
+  variant?: 'default' | 'destructive';
+}
+
 const ExpertDashboard: React.FC = () => {
-  const [profile, setProfile] = useState<ExpertProfile | null>(null);
-  const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+    const [profile, setProfile] = useState<ExpertProfile | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const navigate = useNavigate();
 
-  const [isEditing, setIsEditing] = useState<{
-    personal: boolean;
-    contact: boolean;
-    pricing: boolean;
-    social: boolean;
-  }>({
-    personal: false,
-    contact: false,
-    pricing: false,
-    social: false,
-  });
+    // Add these state declarations
+    const [editedProfile, setEditedProfile] = useState<ExpertProfile | null>(null);
+    const [isEditing, setIsEditing] = useState<EditingState>({
+      personal: false,
+      contact: false,
+      pricing: false
+    });
+    const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+    const [meetings, setMeetings] = useState<Meeting[]>([]);
 
-  const [editedProfile, setEditedProfile] = useState<ExpertProfile | null>(null);
-
-  const handleEdit = async (section: keyof typeof isEditing) => {
-    if (isEditing[section]) {
-      try {
-        setLoading(true);
-        const expertData = localStorage.getItem('expertSignupData');
-        if (!expertData) throw new Error('No expert data found');
-
-        const { token } = JSON.parse(expertData);
-        const response = await fetch('http://localhost:5000/api/experts/profile', {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(editedProfile),
-        });
-
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.message || 'Failed to update profile');
-        }
-
-        if (data.success) {
-          setProfile(data.data);
-          setIsEditing(prev => ({ ...prev, [section]: false }));
-          toast.success('Profile updated successfully');
-        }
-      } catch (error) {
-        console.error('Error updating profile:', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to update profile');
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      setEditedProfile(profile);
-      setIsEditing(prev => ({ ...prev, [section]: true }));
-    }
-  };
-
-  useEffect(() => {
-    const fetchExpertData = async () => {
-      try {
-        const expertData = localStorage.getItem('expertSignupData');
-        if (!expertData) {
-          throw new Error('No expert data found');
-        }
-
-        const { token } = JSON.parse(expertData);
-        const response = await fetch('http://localhost:5000/api/experts/profile', {
-          headers: {
-            'Authorization': `Bearer ${token}`
+    // Add the edit handler function
+    const handleEdit = async (section: keyof EditingState) => {
+      if (isEditing[section]) {
+        try {
+          const userData = localStorage.getItem('user');
+          if (!userData) throw new Error('No user data found');
+  
+          const { token, user_id } = JSON.parse(userData);
+  
+          // Prepare update data based on section
+          const updateData = {
+            section,
+            user_id,
+            ...editedProfile,
+            // Convert string values to numbers for pricing
+            ...(section === 'pricing' && {
+              video_pricing: Number(editedProfile?.video_pricing) || null,
+              audio_pricing: Number(editedProfile?.audio_pricing) || null,
+              chat_pricing: Number(editedProfile?.chat_pricing) || null
+            })
+          };
+  
+          // Debug log
+          console.log('Sending update with data:', updateData);
+  
+          const response = await fetch(`http://localhost:5000/api/experts/profile/${user_id}`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(updateData)
+          });
+  
+          // Debug log
+          console.log('Response status:', response.status);
+  
+          if (!response.ok) {
+            const text = await response.text();
+            console.error('Error response:', text);
+            throw new Error(`Failed to update profile: ${text}`);
           }
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch expert profile');
+  
+          const result = await response.json();
+  
+          if (!result.success) {
+            throw new Error(result.message || 'Failed to update profile');
+          }
+  
+          setProfile(result.data);
+          setEditedProfile(result.data);
+  
+          toast({
+            title: "Success",
+            description: `${section.charAt(0).toUpperCase() + section.slice(1)} updated successfully`,
+          });
+  
+        } catch (error) {
+          console.error('Update error:', error);
+          toast({
+            title: "Error",
+            description: error instanceof Error ? error.message : 'Failed to update profile',
+            variant: "destructive",
+          });
+          return;
         }
-
-        const { success, data, message } = await response.json();
-        if (!success) {
-          throw new Error(message || 'Failed to fetch expert profile');
-        }
-
-        setProfile(data);
-        setMeetings([]); // Initialize with empty meetings array
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load data');
-      } finally {
-        setLoading(false);
       }
+  
+      setIsEditing(prev => ({
+        ...prev,
+        [section]: !prev[section]
+      }));
     };
 
-    fetchExpertData();
-  }, []);
+    // Update useEffect to include meetings fetch
+    useEffect(() => {
+      const fetchData = async () => {
+        try {
+          const userData = localStorage.getItem('user');
+          if (!userData) throw new Error('Please login to access dashboard');
+  
+          const { token, user_id } = JSON.parse(userData);
+          if (!token || !user_id) throw new Error('Invalid session data');
+  
+          // Debug log
+          console.log('Fetching profile for user_id:', user_id);
+  
+          // Fetch profile
+          const profileResponse = await fetch(`http://localhost:5000/api/experts/profile/${user_id}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+  
+          if (!profileResponse.ok) {
+            if (profileResponse.status === 401) {
+              localStorage.removeItem('user');
+              navigate('/auth/expert');
+              throw new Error('Session expired, please login again');
+            }
+            throw new Error('Failed to fetch expert profile');
+          }
+  
+          const profileResult = await profileResponse.json();
+          if (!profileResult.success) {
+            throw new Error(profileResult.message || 'Failed to load profile data');
+          }
+  
+          setProfile(profileResult.data);
+          setEditedProfile(profileResult.data);
+  
+          // Debug log
+          console.log('Profile fetched successfully:', profileResult.data);
+  
+        } catch (error) {
+          console.error('Dashboard error:', error);
+          setError(error instanceof Error ? error.message : 'Failed to load dashboard');
+          if (error instanceof Error && 
+              (error.message.includes('login') || error.message.includes('session'))) {
+            navigate('/auth/expert');
+          }
+        } finally {
+          setLoading(false);
+        }
+      };
+  
+      fetchData();
+    }, [navigate]);
 
-  if (loading) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
-  }
+    // Add this after the existing useEffect
+    useEffect(() => {
+      const fetchSignupData = async () => {
+        try {
+          const signupData = localStorage.getItem('expertSignupData');
+          if (!signupData) return; // Skip if no signup data
+    
+          const { token, user_id } = JSON.parse(signupData);
+          if (!token || !user_id) return;
+    
+          // Debug log
+          console.log('Fetching signup profile data:', { user_id });
+    
+          const profileResponse = await fetch(`http://localhost:5000/api/experts/profile/${user_id}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+    
+          if (!profileResponse.ok) {
+            throw new Error('Failed to fetch expert profile');
+          }
+    
+          const profileResult = await profileResponse.json();
+          if (!profileResult.success) {
+            throw new Error(profileResult.message);
+          }
+    
+          // Update profile state
+          setProfile(profileResult.data);
+          setEditedProfile(profileResult.data);
+    
+          // Store complete user data and clean up signup data
+          const completeUserData = {
+            user_id,
+            token,
+            role: 'expert',
+            profile: profileResult.data
+          };
+          localStorage.setItem('user', JSON.stringify(completeUserData));
+          localStorage.removeItem('expertSignupData');
+    
+        } catch (error) {
+          console.error('Signup data fetch error:', error);
+        }
+      };
+    
+      fetchSignupData();
+    }, []); // Run once on mount
 
-  if (error) {
-    return <div className="flex items-center justify-center min-h-screen text-red-500">{error}</div>;
-  }
+    if (loading) {
+        return (
+            <>
+                <Navbar />
+                <div className="flex items-center justify-center min-h-screen">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                </div>
+                <Footer />
+            </>
+        );
+    }
 
-  return (
+    if (error) {
+        return (
+            <>
+                <Navbar />
+                <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+                    <div className="text-red-500">{error}</div>
+                    <Button onClick={() => window.location.reload()}>
+                        Try Again
+                    </Button>
+                </div>
+                <Footer />
+            </>
+        );
+    }
+
+    if (!profile) {
+        return (
+            <>
+                <Navbar />
+                <div className="flex items-center justify-center min-h-screen">
+                    No profile data available
+                </div>
+                <Footer />
+            </>
+        );
+    }
+
+    return (
     <>
       <Navbar />
-      <div className="container mx-auto px-4 py-8 mt-20">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Profile & Calendar Section */}
-          <Card className="md:col-span-2">
+            <h1 className="text-2xl text-center font-bold mb-0 mt-20">
+             Welcome, {profile.first_name} <span className='text-primary'>{profile.last_name} </span>
+            </h1>
+            <div className="container mx-auto px-4 py-8 mt-0">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+           {/* Profile & Calendar Section */}
+           <Card className="md:col-span-2">
             <CardHeader>
               <CardTitle>Expert Profile & Management</CardTitle>
             </CardHeader>
@@ -586,10 +737,10 @@ const ExpertDashboard: React.FC = () => {
             </CardContent>
           </Card>
         </div>
-      </div>
-      <Footer />
-    </>
-  );
+      </div>    
+    <Footer />
+  </>
+    );
 };
 
 export default ExpertDashboard;

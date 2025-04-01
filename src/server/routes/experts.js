@@ -96,10 +96,18 @@ router.post('/profile', verifyToken, async (req, res) => {
             });
         }
 
+        // Add validation for numeric fields
+        if (isNaN(parseFloat(audioPricing)) || isNaN(parseFloat(videoPricing)) || isNaN(parseFloat(chatPricing))) {
+            return res.status(400).json({
+                success: false,
+                message: 'Pricing fields must be valid numbers'
+            });
+        }
+
         // Check if profile already exists
         const [existingProfiles] = await pool.execute(
-            'SELECT id FROM expert_profiles WHERE id = ?',
-            [req.id]
+            'SELECT id FROM expert_profiles WHERE user_id = ?',
+            [req.user.id]
         );
 
         if (existingProfiles.length > 0) {
@@ -308,7 +316,6 @@ router.get('/profiles', async (req, res) => {
 // Update expert profile
 router.put('/profile', verifyToken, async (req, res) => {
     try {
-        // Verify user is an expert
         if (req.user.role !== 'expert') {
             return res.status(403).json({
                 success: false,
@@ -334,7 +341,16 @@ router.put('/profile', verifyToken, async (req, res) => {
             instagram
         } = req.body;
 
-        // Update expert profile
+        // Validate numeric fields
+        if (video_pricing && isNaN(parseFloat(video_pricing)) || 
+            audio_pricing && isNaN(parseFloat(audio_pricing)) || 
+            chat_pricing && isNaN(parseFloat(chat_pricing))) {
+            return res.status(400).json({
+                success: false,
+                message: 'Pricing fields must be valid numbers'
+            });
+        }
+
         const [result] = await pool.execute(
             `UPDATE expert_profiles 
              SET first_name = ?,
@@ -381,13 +397,19 @@ router.put('/profile', verifyToken, async (req, res) => {
             });
         }
 
-        // Fetch updated profile
         const [updatedProfile] = await pool.execute(
             'SELECT * FROM expert_profiles WHERE user_id = ?',
             [req.user.id]
         );
 
-        res.json({
+        if (updatedProfile.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Updated profile not found'
+            });
+        }
+
+        return res.json({
             success: true,
             message: 'Profile updated successfully',
             data: {
@@ -408,7 +430,6 @@ router.put('/profile', verifyToken, async (req, res) => {
                 instagram: updatedProfile[0].instagram_url
             }
         });
-
     } catch (error) {
         console.error('Error updating expert profile:', error);
         
@@ -480,6 +501,222 @@ router.get('/profiles/:id', async (req, res) => {
     }
 });
 
+// Update expert profile sections
+router.put('/profile/:user_id', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const { user_id } = req.params;
+    const { section, ...updates } = req.body;
 
+    // Debug log
+    console.log('Received update request:', {
+      user_id,
+      section,
+      updates
+    });
+
+    // Validate token
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+
+    // Verify token
+    try {
+      jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    } catch (err) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token'
+      });
+    }
+
+    // Validate section
+    if (!['personal', 'contact', 'pricing'].includes(section)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid update section'
+      });
+    }
+
+    // Build query based on section
+    let query = '';
+    let params = [];
+
+    switch(section) {
+      case 'personal':
+        query = `
+          UPDATE expert_profiles 
+          SET first_name = ?, 
+              last_name = ?, 
+              designation = ?
+          WHERE user_id = ?
+        `;
+        params = [
+          updates.first_name,
+          updates.last_name,
+          updates.designation,
+          user_id
+        ];
+        break;
+
+      case 'contact':
+        query = `
+          UPDATE expert_profiles 
+          SET current_organization = ?, 
+              location = ?, 
+              work_experience = ?,
+              phone_number = ?
+          WHERE user_id = ?
+        `;
+        params = [
+          updates.current_organization,
+          updates.location,
+          updates.work_experience,
+          updates.phone_number,
+          user_id
+        ];
+        break;
+
+      case 'pricing':
+        query = `
+          UPDATE expert_profiles 
+          SET video_pricing = ?, 
+              audio_pricing = ?, 
+              chat_pricing = ?
+          WHERE user_id = ?
+        `;
+        params = [
+          updates.video_pricing ? parseFloat(updates.video_pricing) : null,
+          updates.audio_pricing ? parseFloat(updates.audio_pricing) : null,
+          updates.chat_pricing ? parseFloat(updates.chat_pricing) : null,
+          user_id
+        ];
+        break;
+    }
+
+    // Execute update
+    const [result] = await connection.execute(query, params);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Expert profile not found'
+      });
+    }
+
+    // Fetch updated profile
+    const [profiles] = await connection.execute(
+      `SELECT * FROM expert_profiles WHERE user_id = ?`,
+      [user_id]
+    );
+
+    // Debug log
+    console.log('Update successful, returning profile:', profiles[0]);
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: profiles[0]
+    });
+
+  } catch (error) {
+    console.error('Profile update error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating profile',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Add this new route for fetching profile by user_id
+router.get('/profile/:user_id', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const { user_id } = req.params;
+
+    // Debug log
+    console.log('Fetching profile for user:', user_id);
+
+    const [profiles] = await connection.execute(
+      `SELECT ep.*, u.email 
+       FROM expert_profiles ep
+       JOIN users u ON ep.user_id = u.id
+       WHERE ep.user_id = ?`,
+      [user_id]
+    );
+
+    if (profiles.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Expert profile not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: profiles[0]
+    });
+
+  } catch (error) {
+    console.error('Profile fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching profile',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Fetch expert profile by user_id
+router.get('/profile/:user_id', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const { user_id } = req.params;
+
+    // Debug log to verify the user_id
+    console.log('Fetching profile for user_id:', user_id);
+
+    // Fetch expert profile with user data
+    const [profiles] = await connection.execute(
+      `SELECT * FROM expert_profiles WHERE user_id = ?`,
+      [user_id]
+    );
+
+    if (profiles.length === 0) {
+      console.log('No profile found for user_id:', user_id);
+      return res.status(404).json({
+        success: false,
+        message: 'Expert profile not found'
+      });
+    }
+
+    console.log('Profile found:', profiles[0]);
+    res.json({
+      success: true,
+      data: profiles[0]
+    });
+  } catch (error) {
+    console.error('Error fetching expert profile:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching expert profile',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
 
 module.exports = router;

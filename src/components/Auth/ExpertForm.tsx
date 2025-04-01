@@ -27,6 +27,12 @@ const ExpertForm: React.FC = () => {
         password: ''
     });
 
+    // Add new state for login form
+    const [loginData, setLoginData] = useState({
+        email: '',
+        password: ''
+    });
+
     const handleSignUpClick = (): void => {
         setRightPanelActive(true);
         setError('');
@@ -40,6 +46,16 @@ const ExpertForm: React.FC = () => {
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({
+            ...prev,
+            [name]: value
+        }));
+        setError('');
+    };
+
+    // Add login form handler
+    const handleLoginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setLoginData(prev => ({
             ...prev,
             [name]: value
         }));
@@ -94,6 +110,87 @@ const ExpertForm: React.FC = () => {
         }
     };
 
+    // Add login submit handler
+    const handleSignInSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+
+        try {
+            const response = await fetch('http://localhost:5000/api/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(loginData)
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || 'Login failed');
+            }
+
+            // Store user data
+            const userData = {
+                user_id: result.data.user_id,
+                name: result.data.name,
+                email: result.data.email,
+                role: result.data.role,
+                token: result.data.token
+            };
+
+            localStorage.setItem('user', JSON.stringify(userData));
+
+            toast.success('Login successful!');
+            // Use the existing dashboard route
+            navigate('/dashboard');
+
+        } catch (error) {
+            console.error('Login error:', error);
+            setError(error instanceof Error ? error.message : 'Login failed');
+            toast.error(error instanceof Error ? error.message : 'Login failed');
+        }
+    };
+
+    const handleLoginSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+
+        try {
+            const response = await fetch('http://localhost:5000/api/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(loginData)
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || 'Login failed');
+            }
+
+            // Store user data
+            localStorage.setItem('user', JSON.stringify({
+                id: result.data.id,
+                name: result.data.name,
+                email: result.data.email,
+                role: result.data.role,
+                token: result.data.token
+            }));
+
+            toast.success('Login successful!');
+            // Update navigation path to match new route structure
+            navigate(`/expert/dashboard/${result.data.id}`);
+
+        } catch (error) {
+            console.error('Login error:', error);
+            setError(error instanceof Error ? error.message : 'Login failed');
+            toast.error(error instanceof Error ? error.message : 'Login failed');
+        }
+    };
+
     return (
         <>
             <Navbar />
@@ -140,10 +237,31 @@ const ExpertForm: React.FC = () => {
                         </form>
                     </div>
                     <div className="form-container sign-in-container">
-                        <form className="auth-form">
+                        <form className="auth-form" onSubmit={handleSignInSubmit}>
                             <h1>Sign In <br/> As an Expert</h1>
-                            <input type="email" className="auth-input" placeholder="Email" required />
-                            <input type="password" className="auth-input" placeholder="Password" required />
+                            {error && (
+                                <div className="text-red-500 text-sm mb-4 text-center">
+                                    {error}
+                                </div>
+                            )}
+                            <input 
+                                type="email" 
+                                name="email"
+                                className="auth-input" 
+                                placeholder="Email" 
+                                value={loginData.email}
+                                onChange={handleLoginChange}
+                                required 
+                            />
+                            <input 
+                                type="password" 
+                                name="password"
+                                className="auth-input" 
+                                placeholder="Password" 
+                                value={loginData.password}
+                                onChange={handleLoginChange}
+                                required 
+                            />
                             <a href="#" className="forgot-password">Forgot your password?</a>
                             <button type="submit" className="auth-button">Sign In</button>
                             <span>or use your account</span>

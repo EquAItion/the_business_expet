@@ -95,8 +95,12 @@ const ExpertProfileForm: React.FC = () => {
       }
   
       const result = await response.json();
+
+      window.scrollTo({top:0, behavior: 'smooth'});
+
       toast.success('Your profile has been completed successfully! Redirecting to dashboard...');
       navigate('/dashboard');
+      
     } catch (error) {
       console.error('Error creating profile:', error);
       toast.error(error.message || 'Failed to create profile');
@@ -115,7 +119,7 @@ const ExpertProfileForm: React.FC = () => {
       setSelectedMonth(date.getMonth());
     }
   };
-
+  
   return (
     <>
       <Navbar />

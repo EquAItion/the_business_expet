@@ -22,9 +22,7 @@ import ProductShowcase from "./components/products/ProductShowcase";
 import Onboarding from "./pages/Onboarding";
 import AIdashboard from "./pages/AIdashboard";
 
-
 const queryClient = new QueryClient();
-
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -49,7 +47,6 @@ const App = () => (
           <Route path="/products" element={<Products />} />
           <Route path="/productshowcase" element={<ProductShowcase />} />
           <Route path="/dashboard" element={<ExpertDashboard />} />
-
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
