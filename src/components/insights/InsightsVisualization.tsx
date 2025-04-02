@@ -151,7 +151,22 @@ const InsightsVisualization = () => {
 
   const handleCustomReport = () => {
     window.scrollTo({ top: 0, behavior: 'smooth'});
-    navigate('/onboarding');
+    
+    // Check for user session in localStorage
+    const userSession = localStorage.getItem('user');
+    
+    if (userSession) {
+      // User is logged in, proceed to onboarding
+      navigate('/onboarding');
+    } else {
+      // User is not logged in, redirect to login
+      navigate('/auth/seeker', { 
+        state: { 
+          returnUrl: '/onboarding',
+          message: 'Please log in to request a custom report'
+        } 
+      });
+    }
   };
 
   return (
