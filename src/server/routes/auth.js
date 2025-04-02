@@ -92,32 +92,22 @@ router.post('/register', async (req, res) => {
     }
 });
 
-// Modify the login route to handle both experts and solution seekers
-
-// Login user
-router.post('/login', async (req, res) => {
+// Expert login
+router.post('/login/expert', async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
-        const { email, password, role } = req.body;
+        const { email, password } = req.body;
 
         // Validate input
-        if (!email || !password || !role) {
+        if (!email || !password) {
             return res.status(400).json({
                 success: false,
-                message: 'Email, password and role are required'
+                message: 'Email and password are required'
             });
         }
 
-        // Verify role is valid
-        if (!['expert', 'solution_seeker'].includes(role)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid role specified'
-            });
-        }
-
-        // Query user with specified role
+        // Query expert user
         const [users] = await connection.execute(
             `SELECT 
                 u.id as user_id, 
@@ -126,14 +116,14 @@ router.post('/login', async (req, res) => {
                 u.password, 
                 u.role
             FROM users u
-            WHERE u.email = ? AND u.role = ?`,
-            [email, role]
+            WHERE u.email = ? AND u.role = 'expert'`,
+            [email]
         );
 
         if (users.length === 0) {
             return res.status(401).json({
                 success: false,
-                message: 'Invalid credentials'
+                message: 'Invalid expert credentials'
             });
         }
 
@@ -143,7 +133,7 @@ router.post('/login', async (req, res) => {
         if (!isValidPassword) {
             return res.status(401).json({
                 success: false,
-                message: 'Invalid credentials'
+                message: 'Invalid expert credentials'
             });
         }
 
@@ -167,7 +157,7 @@ router.post('/login', async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Login successful',
+            message: 'Expert login successful',
             data: {
                 ...user,
                 token
@@ -175,10 +165,93 @@ router.post('/login', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('Expert login error:', error);
         res.status(500).json({
             success: false,
-            message: 'Error logging in'
+            message: 'Error logging in as expert'
+        });
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// Solution Seeker login
+router.post('/login/seeker', async (req, res) => {
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const { email, password } = req.body;
+
+        // Validate input
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email and password are required'
+            });
+        }
+
+        // Query solution seeker user
+        const [users] = await connection.execute(
+            `SELECT 
+                u.id as user_id, 
+                u.name, 
+                u.email, 
+                u.password, 
+                u.role
+            FROM users u
+            WHERE u.email = ? AND u.role = 'solution_seeker'`,
+            [email]
+        );
+
+        if (users.length === 0) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid solution seeker credentials'
+            });
+        }
+
+        const user = users[0];
+        const isValidPassword = await bcrypt.compare(password, user.password);
+
+        if (!isValidPassword) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid solution seeker credentials'
+            });
+        }
+
+        const token = jwt.sign(
+            { user_id: user.user_id, role: user.role },
+            process.env.JWT_SECRET || 'your-secret-key',
+            { expiresIn: '24h' }
+        );
+
+        // Store token in database
+        const tokenId = uuidv4();
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 24);
+
+        await connection.execute(
+            'INSERT INTO auth_tokens (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)',
+            [tokenId, user.user_id, token, expiresAt]
+        );
+
+        delete user.password;
+
+        res.json({
+            success: true,
+            message: 'Solution seeker login successful',
+            data: {
+                ...user,
+                token
+            }
+        });
+
+    } catch (error) {
+        console.error('Solution seeker login error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error logging in as solution seeker'
         });
     } finally {
         if (connection) connection.release();
