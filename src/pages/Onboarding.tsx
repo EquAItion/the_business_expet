@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -118,13 +117,46 @@ const Onboarding = () => {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setIsSubmitting(true);
     
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false);
-      console.log("Form Submitted:", formData);
+    try {
+      // Get user token from localStorage
+      const userData = localStorage.getItem('user');
+      if (!userData) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to submit your business plan.",
+          variant: "destructive",
+        });
+        navigate('/auth/seeker');
+        return;
+      }
+      
+      const user = JSON.parse(userData);
+      const token = user.token;
+      
+      // Send data to API
+      const response = await fetch('http://localhost:5000/api/business-plans', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          businessName: formData.businessName,
+          productDescription: formData.productDescription,
+          industry: formData.industry,
+          targetAudience: formData.targetAudience,
+          objectives: formData.objectives
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to submit business plan');
+      }
       
       toast({
         title: "Information Submitted",
@@ -136,7 +168,17 @@ const Onboarding = () => {
         window.scrollTo({ top:0, behavior:'smooth'});
         navigate('/aidashboard');
       }, 1500);
-    }, 2000);
+      
+    } catch (error) {
+      console.error("Submit error:", error);
+      toast({
+        title: "Submission Failed",
+        description: error instanceof Error ? error.message : "Failed to submit business plan",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const renderStepIndicator = () => {

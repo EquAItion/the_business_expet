@@ -72,6 +72,18 @@ CREATE TABLE IF NOT EXISTS webinar_registrations (
     registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS business_plans (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL,
+    business_name VARCHAR(255) NOT NULL,
+    product_description TEXT NOT NULL,
+    industry VARCHAR(100) NOT NULL,
+    target_audience TEXT NOT NULL,
+    objectives JSON NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
 -- Run these SQL commands to verify table structure
 SHOW TABLES;
 DESCRIBE users;

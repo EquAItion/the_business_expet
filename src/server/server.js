@@ -59,6 +59,7 @@ module.exports = { pool };
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/experts', require('./routes/experts'));
 app.use('/api/webinar', require('./routes/webinar'));
+app.use('/api/business-plans', require('./routes/businessPlans'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
