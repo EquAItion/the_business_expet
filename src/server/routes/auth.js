@@ -92,8 +92,6 @@ router.post('/register', async (req, res) => {
     }
 });
 
-<<<<<<< HEAD
-=======
 // Modify the login route to handle both experts and solution seekers
 
 // Login user
@@ -187,7 +185,6 @@ router.post('/login', async (req, res) => {
     }
 });
 
->>>>>>> 852e4c3e570eb3d89277cdae7d3cfc8aba7ea042
 // Add this route after your existing routes
 router.get('/expert/:user_id', async (req, res) => {
     let connection;
@@ -272,175 +269,6 @@ router.get('/expert/:user_id', async (req, res) => {
     }
 });
 
-<<<<<<< HEAD
-// Expert login
-router.post('/login/expert', async (req, res) => {
-    let connection;
-    try {
-        connection = await pool.getConnection();
-        const { email, password } = req.body;
-
-        // Validate input
-        if (!email || !password) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email and password are required'
-            });
-        }
-
-        // Query expert user
-        const [users] = await connection.execute(
-            `SELECT 
-                u.id as user_id, 
-                u.name, 
-                u.email, 
-                u.password, 
-                u.role
-            FROM users u
-            WHERE u.email = ? AND u.role = 'expert'`,
-            [email]
-        );
-
-        if (users.length === 0) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid expert credentials'
-            });
-        }
-
-        const user = users[0];
-        const isValidPassword = await bcrypt.compare(password, user.password);
-
-        if (!isValidPassword) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid expert credentials'
-            });
-        }
-
-        const token = jwt.sign(
-            { user_id: user.user_id, role: user.role },
-            process.env.JWT_SECRET || 'your-secret-key',
-            { expiresIn: '24h' }
-        );
-
-        // Store token in database
-        const tokenId = uuidv4();
-        const expiresAt = new Date();
-        expiresAt.setHours(expiresAt.getHours() + 24);
-
-        await connection.execute(
-            'INSERT INTO auth_tokens (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)',
-            [tokenId, user.user_id, token, expiresAt]
-        );
-
-        delete user.password;
-
-        res.json({
-            success: true,
-            message: 'Expert login successful',
-            data: {
-                ...user,
-                token
-            }
-        });
-
-    } catch (error) {
-        console.error('Expert login error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error logging in as expert'
-        });
-    } finally {
-        if (connection) connection.release();
-    }
-});
-
-// Solution Seeker login
-router.post('/login/seeker', async (req, res) => {
-    let connection;
-    try {
-        connection = await pool.getConnection();
-        const { email, password } = req.body;
-
-        // Validate input
-        if (!email || !password) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email and password are required'
-            });
-        }
-
-        // Query solution seeker user
-        const [users] = await connection.execute(
-            `SELECT 
-                u.id as user_id, 
-                u.name, 
-                u.email, 
-                u.password, 
-                u.role
-            FROM users u
-            WHERE u.email = ? AND u.role = 'solution_seeker'`,
-            [email]
-        );
-
-        if (users.length === 0) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid solution seeker credentials'
-            });
-        }
-
-        const user = users[0];
-        const isValidPassword = await bcrypt.compare(password, user.password);
-
-        if (!isValidPassword) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid solution seeker credentials'
-            });
-        }
-
-        const token = jwt.sign(
-            { user_id: user.user_id, role: user.role },
-            process.env.JWT_SECRET || 'your-secret-key',
-            { expiresIn: '24h' }
-        );
-
-        // Store token in database
-        const tokenId = uuidv4();
-        const expiresAt = new Date();
-        expiresAt.setHours(expiresAt.getHours() + 24);
-
-        await connection.execute(
-            'INSERT INTO auth_tokens (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)', 
-            [tokenId, user.user_id, token, expiresAt]
-        );
-
-        delete user.password;
-
-        res.json({
-            success: true,
-            message: 'Solution seeker login successful',
-            data: {
-                ...user,
-                token
-            }
-        });
-
-    } catch (error) {
-        console.error('Solution seeker login error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error logging in as solution seeker'
-        });
-    } finally {
-        if (connection) connection.release();
-    }
-});
-
-=======
->>>>>>> 852e4c3e570eb3d89277cdae7d3cfc8aba7ea042
 // Add a route to get seeker profile data
 router.get('/seeker/:user_id', async (req, res) => {
     let connection;
