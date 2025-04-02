@@ -96,11 +96,7 @@ const SeekerForm: React.FC = () => {
     const handleSignInSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-<<<<<<< HEAD
-            const response = await fetch('http://localhost:5000/api/auth/login/seeker', {
-=======
             const response = await fetch('http://localhost:5000/api/auth/login', {
->>>>>>> 852e4c3e570eb3d89277cdae7d3cfc8aba7ea042
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
