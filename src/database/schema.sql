@@ -37,6 +37,19 @@ CREATE TABLE IF NOT EXISTS expert_profiles (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Seeker profiles table
+CREATE TABLE IF NOT EXISTS seeker_profiles (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL,
+    company_name VARCHAR(255),
+    industry VARCHAR(100),
+    company_size VARCHAR(50),
+    problem_description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
 -- Authentication tokens table
 CREATE TABLE IF NOT EXISTS auth_tokens (
     id VARCHAR(36) PRIMARY KEY,

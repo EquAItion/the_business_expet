@@ -21,6 +21,7 @@ import WebinarSection from "./components/webinar/WebinarSection";
 import ProductShowcase from "./components/products/ProductShowcase";
 import Onboarding from "./pages/Onboarding";
 import AIdashboard from "./pages/AIdashboard";
+import SeekerDashboard from "./components/dashboard/SeekerDashbord";
 
 const queryClient = new QueryClient();
 const App = () => (
@@ -47,6 +48,7 @@ const App = () => (
           <Route path="/products" element={<Products />} />
           <Route path="/productshowcase" element={<ProductShowcase />} />
           <Route path="/dashboard" element={<ExpertDashboard />} />
+          <Route path="/seekerdashboard" element={<SeekerDashboard />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
