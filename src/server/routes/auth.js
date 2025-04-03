@@ -10,7 +10,7 @@ router.post('/register', async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
-        const { name, email, password, role } = req.body;
+        const { name, email, password, role, industry } = req.body;
 
         // Validate input
         if (!name || !email || !password || !role) {
@@ -47,8 +47,8 @@ router.post('/register', async (req, res) => {
         // Create user
         const userId = uuidv4();
         await connection.execute(
-            'INSERT INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)',
-            [userId, name, email, hashedPassword, role]
+            'INSERT INTO users (id, name, email, password, role, industry) VALUES (?, ?, ?, ?, ?, ?)',
+            [userId, name, email, hashedPassword, role, industry]
         );
 
         // Generate JWT token
@@ -76,6 +76,7 @@ router.post('/register', async (req, res) => {
                 name,
                 email,
                 role,
+                industry,
                 token
             }
         });

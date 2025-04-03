@@ -1,15 +1,17 @@
 -- Create database if not exists
 CREATE DATABASE IF NOT EXISTS expertise_station;
+
 USE expertise_station;
 
--- Users table for both experts and solution seekers
+-- Create users table
 CREATE TABLE IF NOT EXISTS users (
-    id VARCHAR(36) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    role ENUM('expert', 'solution_seeker') NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  id VARCHAR(36) PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  email VARCHAR(100) NOT NULL UNIQUE,
+  password VARCHAR(255) NOT NULL,
+  role VARCHAR(20) NOT NULL,
+  industry VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Expert profiles table
@@ -38,26 +40,37 @@ CREATE TABLE IF NOT EXISTS expert_profiles (
 );
 
 -- Seeker profiles table
-CREATE TABLE IF NOT EXISTS seeker_profiles (
+-- Users profiles table
+CREATE TABLE IF NOT EXISTS users_profiles (
     id VARCHAR(36) PRIMARY KEY,
     user_id VARCHAR(36) NOT NULL,
-    company_name VARCHAR(255),
-    industry VARCHAR(100),
-    company_size VARCHAR(50),
-    problem_description TEXT,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(50) NOT NULL UNIQUE,
+    date_of_birth DATE NOT NULL,
+    phone_number VARCHAR(15) NOT NULL,
+    company VARCHAR(100) NOT NULL,
+    country VARCHAR(100) NOT NULL,
+    state VARCHAR(100) NOT NULL,
+    city VARCHAR(100) NOT NULL,
+    bio TEXT NOT NULL,
+    key_goal TEXT NOT NULL,
+    linkedin_url VARCHAR(255),
+    gender VARCHAR(10) NOT NULL CHECK (gender IN ('Male', 'Female', 'Other')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id)
 );
 
--- Authentication tokens table
+-- Create auth_tokens table
 CREATE TABLE IF NOT EXISTS auth_tokens (
-    id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL,
-    token VARCHAR(255) NOT NULL,
-    expires_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  token TEXT NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 ALTER TABLE expert_profiles ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;

@@ -122,6 +122,29 @@
     border-color: #FFFFFF;
 }
 
+.auth-button-secondary {
+  border-radius: 10px;
+  border: 1px solid #0A78FF;
+  background-color: white;
+  color: #0A78FF;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 6px 7px;
+  /* letter-spacing: 1px; */
+  text-transform: uppercase;
+  transition: transform 80ms ease-in;
+  cursor: pointer;
+  width: 100%; /* Make button take full width of its container */
+}
+
+.auth-button-secondary:hover {
+  background-color: #f8f8f8;
+}
+
+.auth-button-secondary:active {
+  transform: scale(0.95);
+}
+
 .form-container {
     position: absolute;
     top: 0;
@@ -807,6 +830,10 @@
         height: 35px;
         width: 35px;
     }
+}
+
+.flex-1 {
+  flex: 1; /* Make both buttons take equal space */
 }
 
 
