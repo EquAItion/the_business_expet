@@ -51,15 +51,19 @@ const SeekerForm: React.FC = () => {
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
+        
+        // Update form data state
         setFormData(prev => ({
             ...prev,
             [name]: value
         }));
         
+        // Email validation
         if (name === 'email') {
             validateEmail(value);
         }
         
+        // Clear industry error
         if (name === 'industry') {
             setFormErrors(prev => ({
                 ...prev,
@@ -67,9 +71,25 @@ const SeekerForm: React.FC = () => {
             }));
         }
         
+        // Password validation - use current input values
         if (name === 'password' || name === 'confirmPassword') {
-            if (formData.confirmPassword || name === 'confirmPassword') {
-                setTimeout(() => validatePasswords(), 0);
+            // Get the most up-to-date password values
+            const currentPassword = name === 'password' ? value : formData.password;
+            const currentConfirmPassword = name === 'confirmPassword' ? value : formData.confirmPassword;
+            
+            // Only validate if both fields have values
+            if (currentPassword && currentConfirmPassword) {
+                if (currentPassword !== currentConfirmPassword) {
+                    setFormErrors(prev => ({
+                        ...prev,
+                        passwordMatch: 'Passwords do not match'
+                    }));
+                } else {
+                    setFormErrors(prev => ({
+                        ...prev,
+                        passwordMatch: '✔ Passwords match'
+                    }));
+                }
             }
         }
     };
@@ -303,13 +323,20 @@ const SeekerForm: React.FC = () => {
                                 <input 
                                     type="password" 
                                     name="confirmPassword"
-                                    className={`auth-input ${formErrors.passwordMatch ? 'border-red-500' : ''}`} 
+                                    className={`auth-input ${formErrors.passwordMatch === 'Passwords do not match' ? 'border-red-500' : 
+                                                            formErrors.passwordMatch === '✔ Passwords match' ? 'border-green-500' : ''}`} 
                                     placeholder="Confirm Password" 
                                     value={formData.confirmPassword}
                                     onChange={handleInputChange}
                                     required 
                                 />
-                                {formErrors.passwordMatch && <p className="text-red-500 text-xs mt-1">{formErrors.passwordMatch}</p>}
+                                {formErrors.passwordMatch && (
+                                    <p className={`text-xs mt-1 ${
+                                        formErrors.passwordMatch === '✔ Passwords match' ? 'text-green-500' : 'text-red-500'
+                                    }`}>
+                                        {formErrors.passwordMatch}
+                                    </p>
+                                )}
                                 
                                 <div className="flex w-full gap-4 mt-4">
                                     <button 
