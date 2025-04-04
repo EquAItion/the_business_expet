@@ -118,18 +118,20 @@ const Webinar: React.FC = () => {
 
         {/* Video Section */}
         <section className="mb-16">
-          <h2 className="text-3xl font-bold text-center text-gray-900 mb-8">
+          <h2 className="text-3xl font-bold text-center text-gray-900 mb-4">
             Webinar Preview
           </h2>
-          <div className="aspect-w-16 aspect-h-9 max-w-4xl mx-auto">
-            <iframe
-              src="https://www.youtube.com/embed/your-video-id"
-              title="Webinar Preview"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              className="rounded-lg shadow-lg"
-            ></iframe>
-          </div>
+          <div className="mt-16 flex justify-center">
+        <div className="w-[560px] h-[315px] max-w-4xl aspect-video">
+          <iframe
+            className="w-full h-full rounded-xl"
+            src="https://www.youtube.com/embed/ZXJ8owtrWVM"
+            title="Webinar Preview"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          ></iframe>
+        </div>
+      </div>
         </section>
 
         {/* Registration Button */}

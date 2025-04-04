@@ -88,7 +88,7 @@ const ExpertProfileForm: React.FC = () => {
         },
         body: JSON.stringify(completeProfile),
       });
-  
+      
       if (!response.ok) {
         const errorText = await response.text(); // Read the response as plain text
         throw new Error(errorText);

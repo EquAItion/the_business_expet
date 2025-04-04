@@ -20,13 +20,22 @@ const SocialIcons = () => (
 const SeekerForm: React.FC = () => {
     const navigate = useNavigate();
     const [isRightPanelActive, setRightPanelActive] = useState<boolean>(false);
+    const [formStep, setFormStep] = useState(1);
+    
     const [formData, setFormData] = useState({
         name: '',
         email: '',
-        password: ''
+        industry: '',
+        password: '',
+        confirmPassword: ''
+    });
+    
+    const [formErrors, setFormErrors] = useState({
+        email: '',
+        industry: '',
+        passwordMatch: ''
     });
 
-    // Add new state for sign in form data
     const [signInData, setSignInData] = useState({
         email: '',
         password: ''
@@ -46,9 +55,42 @@ const SeekerForm: React.FC = () => {
             ...prev,
             [name]: value
         }));
+        
+        if (name === 'email') {
+            validateEmail(value);
+        }
+        
+        if (name === 'industry') {
+            setFormErrors(prev => ({
+                ...prev,
+                industry: ''
+            }));
+        }
+        
+        if (name === 'password' || name === 'confirmPassword') {
+            if (formData.confirmPassword || name === 'confirmPassword') {
+                setTimeout(() => validatePasswords(), 0);
+            }
+        }
     };
 
-    // Add handler for sign in input changes
+    const validateEmail = (email: string) => {
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        if (!emailRegex.test(email)) {
+            setFormErrors(prev => ({
+                ...prev,
+                email: 'Please enter a valid email address'
+            }));
+            return false;
+        } else {
+            setFormErrors(prev => ({
+                ...prev,
+                email: ''
+            }));
+            return true;
+        }
+    };
+
     const handleSignInInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setSignInData(prev => ({
@@ -57,16 +99,71 @@ const SeekerForm: React.FC = () => {
         }));
     };
 
+    const validatePasswords = () => {
+        if (formData.password !== formData.confirmPassword) {
+            setFormErrors(prev => ({
+                ...prev,
+                passwordMatch: 'Passwords do not match'
+            }));
+            return false;
+        } else {
+            setFormErrors(prev => ({
+                ...prev,
+                passwordMatch: ''
+            }));
+            return true;
+        }
+    };
+
+    const handleContinue = (e: React.MouseEvent<HTMLButtonElement>) => {
+        e.preventDefault();
+        
+        const isEmailValid = validateEmail(formData.email);
+        
+        if (!formData.name.trim()) {
+            toast.error('Please enter your name');
+            return;
+        }
+        
+        if (!formData.industry.trim()) {
+            setFormErrors(prev => ({
+                ...prev,
+                industry: 'Industry is required'
+            }));
+            toast.error('Please select your industry');
+            return;
+        }
+        
+        if (!isEmailValid) {
+            toast.error('Please enter a valid email address');
+            return;
+        }
+        
+        setFormStep(2);
+    };
+
     const handleSignUpSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        if (formStep === 2) {
+            const passwordsMatch = validatePasswords();
+            
+            if (!passwordsMatch) {
+                toast.error('Passwords do not match');
+                return;
+            }
+        }
+        
         try {
+            const { confirmPassword, ...dataToSend } = formData;
+            
             const response = await fetch('http://localhost:5000/api/auth/register', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    ...formData,
+                    ...dataToSend,
                     role: 'solution_seeker'
                 })
             });
@@ -77,24 +174,27 @@ const SeekerForm: React.FC = () => {
                 throw new Error(result.message || 'Registration failed');
             }
 
-            // Store signup data and token in localStorage
             localStorage.setItem('seekerSignupData', JSON.stringify({
                 ...formData,
                 token: result.data.token
             }));
 
-            toast.success('Registration successful!');
-            // Navigate to home page after successful registration
-            navigate('/');
+            toast.success('Registration successful! Please complete your profile.');
+            navigate('/auth/SeekerProfileForm');
         } catch (error) {
             console.error('Registration error:', error);
-            // Handle error - show error message to user
+            toast.error(error instanceof Error ? error.message : 'Registration failed');
         }
     };
 
-    // Add sign in submit handler
     const handleSignInSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        if (!validateEmail(signInData.email)) {
+            toast.error('Please enter a valid email address');
+            return;
+        }
+        
         try {
             const response = await fetch('http://localhost:5000/api/auth/login/seeker', {
                 method: 'POST',
@@ -114,7 +214,6 @@ const SeekerForm: React.FC = () => {
                 throw new Error(result.message || 'Login failed');
             }
 
-            // Store user data and token in localStorage
             localStorage.setItem('user', JSON.stringify({
                 email: signInData.email,
                 token: result.data.token,
@@ -122,7 +221,6 @@ const SeekerForm: React.FC = () => {
             }));
 
             toast.success('Login successful!');
-            // Navigate to seeker dashboard after successful login
             navigate('/seekerdashboard');
         } catch (error) {
             console.error('Login error:', error);
@@ -138,38 +236,95 @@ const SeekerForm: React.FC = () => {
                     <div className="form-container sign-up-container">
                         <form className="auth-form" onSubmit={handleSignUpSubmit}>
                             <h1>Create Account <br/> As a Solution Seeker</h1>
-                            <input 
-                                type="text" 
-                                name="name"
-                                className="auth-input" 
-                                placeholder="Name" 
-                                value={formData.name}
-                                onChange={handleInputChange}
-                                required 
-                            />
-                            <input 
-                                type="email" 
-                                name="email"
-                                className="auth-input" 
-                                placeholder="Email" 
-                                value={formData.email}
-                                onChange={handleInputChange}
-                                required 
-                            />
-                            <input 
-                                type="password" 
-                                name="password"
-                                className="auth-input" 
-                                placeholder="Password" 
-                                value={formData.password}
-                                onChange={handleInputChange}
-                                required 
-                            />
-                            <button type="submit" className="auth-button">Sign Up</button>
-                            <span>or use your email for registration</span>
-                            <SocialIcons />
+                            
+                            <div className="flex justify-center space-x-2 mb-4">
+                                <div className={`h-2 w-2 rounded-full ${formStep === 1 ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+                                <div className={`h-2 w-2 rounded-full ${formStep === 2 ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+                            </div>
+                            
+                            <div className={formStep === 1 ? 'block' : 'hidden'}>
+                                <input 
+                                    type="text" 
+                                    name="name"
+                                    className="auth-input" 
+                                    placeholder="Name" 
+                                    value={formData.name}
+                                    onChange={handleInputChange}
+                                    required 
+                                />
+                                <div className="w-full">
+                                    <input 
+                                        type="email" 
+                                        name="email"
+                                        className={`auth-input ${formErrors.email ? 'border-red-500' : ''}`}
+                                        placeholder="Email" 
+                                        value={formData.email}
+                                        onChange={handleInputChange}
+                                        required 
+                                    />
+                                    {formErrors.email && <p className="text-red-500 text-xs mt-1">{formErrors.email}</p>}
+                                </div>
+                                <div className="w-full">
+                                    <input 
+                                        type="text" 
+                                        name="industry"
+                                        className={`auth-input ${formErrors.industry ? 'border-red-500' : ''}`}
+                                        placeholder="Industry" 
+                                        value={formData.industry}
+                                        onChange={handleInputChange}
+                                        required 
+                                    />
+                                    {formErrors.industry && <p className="text-red-500 text-xs mt-1">{formErrors.industry}</p>}
+                                </div>
+                                
+                                <button 
+                                    type="button" 
+                                    className="auth-button mt-4"
+                                    onClick={handleContinue}
+                                >
+                                    Continue
+                                </button>
+                                <br/>
+                                <span className="mt-4">or use your email for registration</span>
+                                <SocialIcons />
+                            </div>
+                            
+                            <div className={formStep === 2 ? 'block' : 'hidden'}>
+                                <h3 className="text-lg font-semibold mb-4">Create a Password</h3>
+                                <input 
+                                    type="password" 
+                                    name="password"
+                                    className="auth-input" 
+                                    placeholder="Password" 
+                                    value={formData.password}
+                                    onChange={handleInputChange}
+                                    required 
+                                />
+                                <input 
+                                    type="password" 
+                                    name="confirmPassword"
+                                    className={`auth-input ${formErrors.passwordMatch ? 'border-red-500' : ''}`} 
+                                    placeholder="Confirm Password" 
+                                    value={formData.confirmPassword}
+                                    onChange={handleInputChange}
+                                    required 
+                                />
+                                {formErrors.passwordMatch && <p className="text-red-500 text-xs mt-1">{formErrors.passwordMatch}</p>}
+                                
+                                <div className="flex w-full gap-4 mt-4">
+                                    <button 
+                                        type="button" 
+                                        className="border border-gray-300 rounded-full px-4 py-2 text-sm flex-1"
+                                        onClick={() => setFormStep(1)}
+                                    >
+                                        Back
+                                    </button>
+                                    <button type="submit" className="auth-button flex-1">Sign Up</button>
+                                </div>
+                            </div>
                         </form>
                     </div>
+                    
                     <div className="form-container sign-in-container">
                         <form className="auth-form" onSubmit={handleSignInSubmit}>
                             <h1>Sign In <br/> As a Solution Seeker</h1>

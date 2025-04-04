@@ -23,6 +23,8 @@ import Onboarding from "./pages/Onboarding";
 import AIdashboard from "./pages/AIdashboard";
 import SeekerDashboard from "./components/dashboard/SeekerDashbord";
 
+
+
 const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>

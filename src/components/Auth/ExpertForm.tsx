@@ -5,7 +5,6 @@ import Navbar from '../layout/Navbar';
 import './auth.css';
 import { toast } from 'react-hot-toast';
 import Footer from '../layout/Footer';
-import { motion, AnimatePresence } from 'framer-motion';
 
 const SocialIcons = () => (
     <div className="social-container">
@@ -23,13 +22,10 @@ const ExpertForm: React.FC = () => {
     const [isRightPanelActive, setRightPanelActive] = useState<boolean>(false);
     const [error, setError] = useState<string>('');
     const [formStep, setFormStep] = useState(1); // Track form step
-    const [passwordsMatch, setPasswordsMatch] = useState(true);
     const formRef = useRef<HTMLDivElement>(null);
     const [formData, setFormData] = useState({
         name: '',
         email: '',
-        password: '', 
-        confirmPassword: '', // Add this field
         industry: ''
     });
 
@@ -38,6 +34,10 @@ const ExpertForm: React.FC = () => {
         email: '',
         password: ''
     });
+
+    // Add these new states to your component
+    const [showPasswordPopup, setShowPasswordPopup] = useState(false);
+    const [generatedPassword, setGeneratedPassword] = useState('');
 
     const handleSignUpClick = (): void => {
         setRightPanelActive(true);
@@ -62,16 +62,6 @@ const ExpertForm: React.FC = () => {
         // Update the form data state
         setFormData(updatedFormData);
         setError('');
-        
-        // Check password match immediately with the updated values
-        if (name === 'password' || name === 'confirmPassword') {
-            if (updatedFormData.password && updatedFormData.confirmPassword) {
-                const doPasswordsMatch = updatedFormData.password === updatedFormData.confirmPassword;
-                setPasswordsMatch(doPasswordsMatch);
-            } else {
-                setPasswordsMatch(true); // Reset to true if either field is empty
-            }
-        }
     };
 
     // Add login form handler
@@ -84,27 +74,33 @@ const ExpertForm: React.FC = () => {
         setError('');
     };
 
+    // Update the handleSignUpSubmit function to show the password popup
     const handleSignUpSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
 
         // Final validation
-        if (!formData.name.trim() || !formData.email.trim() || !formData.password.trim() || !formData.industry.trim()) {
+        if (!formData.name.trim() || !formData.email.trim() || !formData.industry.trim()) {
             setError('All fields are required');
             return;
         }
 
-        if (formData.password.length < 6) {
-            setError('Password must be at least 6 characters long');
-            return;
-        }
-        
-        if (formData.password !== formData.confirmPassword) {
-            setError('Passwords do not match');
-            return;
-        }
-
         try {
+            // Generate a secure random password (more secure than the previous method)
+            const randomPassword = Array(10)
+                .fill('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@#$%^&*')
+                .map(x => x[Math.floor(Math.random() * x.length)])
+                .join('');
+            
+            // Store the generated password to display in popup
+            setGeneratedPassword(randomPassword);
+            
+            // Send welcome email
+            const emailSent = await sendWelcomeEmail(formData.name, formData.email);
+            if (emailSent) {
+                toast.success('Welcome email sent! Please check your inbox.');
+            }
+            
             const response = await fetch('http://localhost:5000/api/auth/register', {
                 method: 'POST',
                 headers: {
@@ -112,7 +108,8 @@ const ExpertForm: React.FC = () => {
                 },
                 body: JSON.stringify({
                     ...formData,
-                    role: 'expert'
+                    role: 'expert',
+                    password: randomPassword // Use the generated password
                 })
             });
 
@@ -128,16 +125,24 @@ const ExpertForm: React.FC = () => {
                 token: result.data.token
             }));
 
-            toast.success('Registration successful! Please complete your profile.');
-            // Navigate to expert profile form page
-            navigate('/auth/ExpertProfileForm');
+            // Show password popup
+            setShowPasswordPopup(true);
+            
+            // Don't navigate yet - let the user see their password first
         } catch (error) {
             console.error('Registration error:', error);
             setError(error instanceof Error ? error.message : 'Registration failed. Please try again.');
         }
     };
 
-    // Add login submit handler
+    // Add a function to handle continuing after seeing the password
+    const handleContinueAfterPassword = () => {
+        setShowPasswordPopup(false);
+        toast.success('Registration successful! Please complete your profile.');
+        navigate('/auth/ExpertProfileForm');
+    };
+
+    // Alternative approach without backend changes
     const handleSignInSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -164,14 +169,42 @@ const ExpertForm: React.FC = () => {
                 email: result.data.email,
                 role: result.data.role,
                 token: result.data.token
-                
             };
 
             localStorage.setItem('user', JSON.stringify(userData));
 
             toast.success('Login successful!');
-            // Use the existing dashboard route
-            navigate('/dashboard');
+            
+            // Check profile status after login
+            try {
+                const profileResponse = await fetch(`http://localhost:5000/api/experts/profile/${result.data.user_id}`, {
+                    headers: {
+                        'Authorization': `Bearer ${result.data.token}`
+                    }
+                });
+                
+                if (!profileResponse.ok) {
+                    // Profile doesn't exist or is incomplete
+                    toast('Please complete your profile to access the dashboard', {
+                        icon: '📝',
+                        style: {
+                            background: '#3498db',
+                            color: '#fff'
+                        }
+                    });
+                    navigate('/auth/ExpertProfileForm');
+                    return;
+                }
+                
+                // Profile exists, navigate to dashboard
+                navigate('/dashboard');
+                
+            } catch (error) {
+                // If we can't check profile, assume it's incomplete
+                console.error('Error checking profile:', error);
+                toast.info('Please complete your profile to access the dashboard');
+                navigate('/auth/ExpertProfileForm');
+            }
 
         } catch (error) {
             console.error('Login error:', error);
@@ -179,45 +212,6 @@ const ExpertForm: React.FC = () => {
             toast.error(error instanceof Error ? error.message : 'Login failed');
         }
     };
-
-    // const handleLoginSubmit = async (e: React.FormEvent) => {
-    //     e.preventDefault();
-    //     setError('');
-
-    //     try {
-    //         const response = await fetch('http://localhost:5000/api/auth/login', {
-    //             method: 'POST',
-    //             headers: {
-    //                 'Content-Type': 'application/json'
-    //             },
-    //             body: JSON.stringify(loginData)
-    //         });
-
-    //         const result = await response.json();
-
-    //         if (!response.ok) {
-    //             throw new Error(result.message || 'Login failed');
-    //         }
-
-    //         // Store user data
-    //         localStorage.setItem('user', JSON.stringify({
-    //             id: result.data.id,
-    //             name: result.data.name,
-    //             email: result.data.email,
-    //             role: result.data.role,
-    //             token: result.data.token
-    //         }));
-
-    //         toast.success('Login successful!');
-    //         // Update navigation path to match new route structure
-    //         navigate(`/expert/dashboard/${result.data.id}`);
-
-    //     } catch (error) {
-    //         console.error('Login error:', error);
-    //         setError(error instanceof Error ? error.message : 'Login failed');
-    //         toast.error(error instanceof Error ? error.message : 'Login failed');
-    //     }
-    // };
 
     // Add this function after your other handleInputChange functions
     const sendWelcomeEmail = async (name: string, email: string) => {
@@ -283,13 +277,16 @@ const ExpertForm: React.FC = () => {
         setFormStep(2);
     };
 
-    // Add password confirmation check
-    const checkPasswordsMatch = () => {
-        if (formData.password && formData.confirmPassword) {
-            setPasswordsMatch(formData.password === formData.confirmPassword);
-        } else {
-            setPasswordsMatch(true);
-        }
+    // Add this function to handle copying password to clipboard
+    const copyPasswordToClipboard = () => {
+        navigator.clipboard.writeText(generatedPassword)
+          .then(() => {
+            toast.success('Password copied to clipboard!');
+          })
+          .catch(err => {
+            console.error('Failed to copy password: ', err);
+            toast.error('Failed to copy password');
+          });
     };
 
     return (
@@ -306,116 +303,42 @@ const ExpertForm: React.FC = () => {
                                 </div>
                             )}
                             
-                            {/* Use AnimatePresence to control animations for both steps */}
-                            <AnimatePresence mode="wait">
-                                {formStep === 1 ? (
-                                    /* Step 1 - Initial Information */
-                                    <motion.div 
-                                        key="step1"
-                                        className="w-full"
-                                        initial={{ x: 0, opacity: 1 }}
-                                        exit={{ x: -300, opacity: 0 }}
-                                        transition={{ duration: 0.3 }}
-                                    >
-                                        <input 
-                                            type="text" 
-                                            name="name"
-                                            className="auth-input" 
-                                            placeholder="Name" 
-                                            value={formData.name}
-                                            onChange={handleInputChange}
-                                            required 
-                                        />
-                                        <input 
-                                            type="email" 
-                                            name="email"
-                                            className="auth-input" 
-                                            placeholder="Email" 
-                                            value={formData.email}
-                                            onChange={handleInputChange}
-                                            required 
-                                        />
-                                        <input 
-                                            type="text" 
-                                            name="industry"
-                                            className="auth-input" 
-                                            placeholder="Industry" 
-                                            value={formData.industry}
-                                            onChange={handleInputChange}
-                                            required 
-                                        />
-                                        <button 
-                                            type="button" 
-                                            onClick={handleContinue} 
-                                            className="auth-button mt-4"
-                                        >
-                                            Continue
-                                        </button>
-                                    </motion.div>
-                                ) : (
-                                    /* Step 2 - Password Information */
-                                    <motion.div
-                                        key="step2"
-                                        className="w-full"
-                                        initial={{ x: 300, opacity: 0 }}
-                                        animate={{ x: 0, opacity: 1 }}
-                                        transition={{ duration: 0.3 }}
-                                    >
-                                        <input 
-                                            type="password" 
-                                            name="password"
-                                            className="auth-input" 
-                                            placeholder="Password" 
-                                            value={formData.password}
-                                            onChange={handleInputChange}
-                                            required 
-                                        />
-                                        <input 
-                                            type="password" 
-                                            name="confirmPassword"
-                                            className={`auth-input ${
-                                                !passwordsMatch && formData.confirmPassword 
-                                                    ? 'border-red-500' 
-                                                    : (passwordsMatch && formData.confirmPassword && formData.password) 
-                                                        ? 'border-green-500' 
-                                                        : ''
-                                            }`}
-                                            placeholder="Confirm Password" 
-                                            value={formData.confirmPassword}
-                                            onChange={handleInputChange}
-                                            required 
-                                        />
-                                        {!passwordsMatch && formData.confirmPassword && (
-                                            <p className="text-red-500 text-xs mt-1">Passwords do not match</p>
-                                        )}
-                                        {passwordsMatch && formData.password && formData.confirmPassword && (
-                                            <p className="text-green-500 text-xs mt-1">Passwords match ✓</p>
-                                        )}
-                                        
-                                        <div className="flex w-full mt-4">
-                                            {/* <button 
-                                                type="button" 
-                                                onClick={() => setFormStep(1)} 
-                                                className="auth-button-secondary mr-3"
-                                                style={{ 
-                                                    width: '120px',
-                                                    padding: '2px 2px',  // Reduce padding from default (likely 12px)
-                                                    fontSize: '11px'      // Slightly smaller font
-                                                }}
-                                            >
-                                                Back
-                                            </button> */}
-                                            <button 
-                                                type="submit" 
-                                                className="auth-button flex-1"  // Keep flex-1 to take remaining space
-                                                disabled={!passwordsMatch}
-                                            >
-                                                Sign Up
-                                            </button>
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
+                            {/* Replace the AnimatePresence section with this single form */}
+                            <div className="w-full">
+                                <input 
+                                    type="text" 
+                                    name="name"
+                                    className="auth-input" 
+                                    placeholder="Name" 
+                                    value={formData.name}
+                                    onChange={handleInputChange}
+                                    required 
+                                />
+                                <input 
+                                    type="email" 
+                                    name="email"
+                                    className="auth-input" 
+                                    placeholder="Email" 
+                                    value={formData.email}
+                                    onChange={handleInputChange}
+                                    required 
+                                />
+                                <input 
+                                    type="text" 
+                                    name="industry"
+                                    className="auth-input" 
+                                    placeholder="Industry" 
+                                    value={formData.industry}
+                                    onChange={handleInputChange}
+                                    required 
+                                />
+                                <button 
+                                    type="submit"
+                                    className="auth-button mt-4"
+                                >
+                                    Sign Up
+                                </button>
+                            </div>
                             
                             {/* Show social icons on both steps */}
                             <span className="mt-4">or use your email for registration</span>
@@ -470,6 +393,83 @@ const ExpertForm: React.FC = () => {
                     </div>
                 </div>
             </div>
+            {/* Password Popup */}
+            {showPasswordPopup && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 overflow-y-auto">
+                    <div className="relative bg-white dark:bg-gray-800 rounded-xl p-5 
+                                    sm:p-6 md:p-5 max-w-md w-full mx-auto my-8 
+                                    md:absolute md:top-1/1 md:left-1/2 md:-translate-x-1/1 md:-translate-y-1/1 
+                                    md:max-w-sm md:mt-16 md:my-0 
+                                    animate-scale-in shadow-2xl">
+                        <div className="flex flex-col items-center text-center">
+                            {/* Success Icon - smaller on tablets */}
+                            <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-14 md:h-14 bg-green-100 rounded-full flex items-center justify-center mb-4 md:mb-3">
+                                <svg 
+                                    className="w-9 h-9 sm:w-12 sm:h-12 md:w-8 md:h-8 text-green-600" 
+                                    fill="none" 
+                                    stroke="currentColor" 
+                                    viewBox="0 0 24 24" 
+                                    xmlns="http://www.w3.org/2000/svg"
+                                >
+                                    <path 
+                                        strokeLinecap="round" 
+                                        strokeLinejoin="round" 
+                                        strokeWidth="2" 
+                                        d="M5 13l4 4L19 7"
+                                    ></path>
+                                </svg>
+                            </div>
+                            
+                            <h2 className="text-xl sm:text-2xl md:text-lg font-bold mb-3 md:mb-2">Account Created!</h2>
+                            
+                            <p className="text-base sm:text-lg md:text-sm mb-2">
+                                Here is your auto-generated password:
+                            </p>
+                            
+                            {/* Password container with copy button */}
+                            <div className="relative bg-gray-100 p-3 sm:p-4 md:p-2 rounded-lg mb-4 md:mb-3 w-full">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-sm sm:text-lg md:text-base font-mono font-semibold tracking-wider break-all pr-10">
+                                        {generatedPassword}
+                                    </p>
+                                    <button 
+                                        onClick={copyPasswordToClipboard}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-blue-500 hover:bg-blue-600 text-white p-1.5 sm:p-2 md:p-1 rounded-md transition-colors"
+                                        aria-label="Copy password"
+                                        title="Copy password"
+                                    >
+                                        <svg 
+                                            xmlns="http://www.w3.org/2000/svg" 
+                                            className="h-4 w-4 sm:h-5 sm:w-5 md:h-4 md:w-4" 
+                                            fill="none" 
+                                            viewBox="0 0 24 24" 
+                                            stroke="currentColor"
+                                        >
+                                            <path 
+                                                strokeLinecap="round" 
+                                                strokeLinejoin="round" 
+                                                strokeWidth={2} 
+                                                d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" 
+                                            />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <p className="text-amber-600 text-sm md:text-xs font-semibold mb-4 md:mb-3">
+                                Please save this password securely. You'll need it to log in.
+                            </p>
+                            
+                            <button 
+                                onClick={handleContinueAfterPassword}
+                                className="bg-green-600 hover:bg-green-700 text-white py-2 px-4 md:py-1.5 md:text-sm rounded-lg font-medium transition-colors w-full"
+                            >
+                                I've Saved My Password
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
           <Footer/>
         </>
     );
