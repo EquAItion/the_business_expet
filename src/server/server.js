@@ -19,6 +19,9 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
+// Add this line after creating the pool:
+app.locals.db = pool;
+
 // Test database connection
 const testConnection = async () => {
     try {
@@ -42,6 +45,33 @@ const testConnection = async () => {
             )
         `);
 
+        // Add this in your testConnection function after other CREATE TABLE statements
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS seeker_profiles (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                name VARCHAR(100) NOT NULL,
+                email VARCHAR(100) NOT NULL,
+                industry VARCHAR(100) NOT NULL,
+                company VARCHAR(100) NOT NULL,
+                position VARCHAR(100) NOT NULL,
+                experience VARCHAR(50) NOT NULL,
+                location VARCHAR(100) NOT NULL,
+                bio TEXT NOT NULL,
+                interests VARCHAR(255) NOT NULL,
+                linkedin_url VARCHAR(255),
+                website_url VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        `);
+
+        // Make sure the users table has a profile_completed column
+        await connection.query(`
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_completed BOOLEAN DEFAULT FALSE
+        `);
+
         connection.release();
     } catch (error) {
         console.error('Database connection error:', error);
@@ -55,11 +85,19 @@ testConnection();
 // Export pool before routes to avoid circular dependency
 module.exports = { pool };
 
+// After creating the pool
+app.locals.db = pool;
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/experts', require('./routes/experts'));
 app.use('/api/webinar', require('./routes/webinar'));
 app.use('/api/business-plans', require('./routes/businessPlans'));
+
+const profilesRouter = require('./routes/profiles');
+
+// Pass the database connection to the routes
+app.use('/api/profiles', profilesRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -75,6 +113,3 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
-
-// Export pool for use in other files
-module.exports = { pool };

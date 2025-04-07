@@ -36,32 +36,52 @@ CREATE TABLE IF NOT EXISTS expert_profiles (
     instagram_url VARCHAR(255),
     youtube_url VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Seeker profiles table
--- Users profiles table
-CREATE TABLE IF NOT EXISTS users_profiles (
-    id VARCHAR(36) PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS seeker_profiles (
+    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
     user_id VARCHAR(36) NOT NULL,
-    first_name VARCHAR(50) NOT NULL,
-    last_name VARCHAR(50) NOT NULL,
-    email VARCHAR(50) NOT NULL UNIQUE,
-    date_of_birth DATE NOT NULL,
-    phone_number VARCHAR(15) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    industry VARCHAR(100) NOT NULL,
     company VARCHAR(100) NOT NULL,
-    country VARCHAR(100) NOT NULL,
-    state VARCHAR(100) NOT NULL,
-    city VARCHAR(100) NOT NULL,
+    position VARCHAR(100) NOT NULL,
+    experience VARCHAR(50) NOT NULL,
+    location VARCHAR(100) NOT NULL,
     bio TEXT NOT NULL,
-    key_goal TEXT NOT NULL,
+    interests VARCHAR(255) NOT NULL,
     linkedin_url VARCHAR(255),
-    gender VARCHAR(10) NOT NULL CHECK (gender IN ('Male', 'Female', 'Other')),
+    website_url VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_user_id (user_id)
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- -- Users profiles table
+-- CREATE TABLE IF NOT EXISTS users_profiles (
+--     id VARCHAR(36) PRIMARY KEY,
+--     user_id VARCHAR(36) NOT NULL,
+--     first_name VARCHAR(50) NOT NULL,
+--     last_name VARCHAR(50) NOT NULL,
+--     email VARCHAR(50) NOT NULL UNIQUE,
+--     date_of_birth DATE NOT NULL,
+--     phone_number VARCHAR(15) NOT NULL,
+--     company VARCHAR(100) NOT NULL,
+--     country VARCHAR(100) NOT NULL,
+--     state VARCHAR(100) NOT NULL,
+--     city VARCHAR(100) NOT NULL,
+--     bio TEXT NOT NULL,
+--     key_goal TEXT NOT NULL,
+--     linkedin_url VARCHAR(255),
+--     gender VARCHAR(10) NOT NULL CHECK (gender IN ('Male', 'Female', 'Other')),
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+--     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+--     INDEX idx_user_id (user_id)
+-- );
 
 -- Create auth_tokens table
 CREATE TABLE IF NOT EXISTS auth_tokens (
@@ -72,8 +92,6 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
-ALTER TABLE expert_profiles ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
 
 CREATE TABLE IF NOT EXISTS webinar_registrations (
     id INT PRIMARY KEY AUTO_INCREMENT,

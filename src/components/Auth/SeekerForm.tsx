@@ -195,7 +195,10 @@ const SeekerForm: React.FC = () => {
             }
 
             localStorage.setItem('seekerSignupData', JSON.stringify({
-                ...formData,
+                id: result.data.userId,
+                name: formData.name,
+                email: formData.email,
+                industry: formData.industry,
                 token: result.data.token
             }));
 
