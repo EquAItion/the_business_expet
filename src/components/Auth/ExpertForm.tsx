@@ -40,6 +40,9 @@ const ExpertForm: React.FC = () => {
     const [generatedPassword, setGeneratedPassword] = useState('');
     const [copySuccess, setCopySuccess] = useState(false);
 
+    // Add a new state for confirmation popup
+    const [showConfirmationPopup, setShowConfirmationPopup] = useState(false);
+
     const handleSignUpClick = (): void => {
         setRightPanelActive(true);
         setError('');
@@ -96,11 +99,6 @@ const ExpertForm: React.FC = () => {
             // Store the generated password to display in popup
             setGeneratedPassword(randomPassword);
             
-            // Send welcome email
-            // const emailSent = await sendWelcomeEmail(formData.name, formData.email);
-            // if (emailSent) {
-            //     toast.success('Welcome email sent! Please check your inbox.');
-            // }
             const API_BASE_URL = import.meta.env.VITE_API_URL;
             
             const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
@@ -129,21 +127,24 @@ const ExpertForm: React.FC = () => {
                 setShowPasswordPopup(true);
             }
 
-            // Don't navigate yet - let the user see their password first
         } catch (error) {
             console.error('Registration error:', error);
             setError(error instanceof Error ? error.message : 'Registration failed. Please try again.');
         }
     };
 
-    // Add a function to handle continuing after seeing the password
+    // Update the handleContinueAfterPassword function
     const handleContinueAfterPassword = () => {
         setShowPasswordPopup(false);
-        toast.success('Registration successful! Please complete your profile.');
-        navigate('/auth/ExpertProfileForm');
+        setShowConfirmationPopup(true); // Show the confirmation popup instead of navigating
     };
 
-    // Alternative approach without backend changes
+    // Add a function to handle closing the confirmation popup
+    const handleCloseConfirmation = () => {
+        setShowConfirmationPopup(false);
+        setRightPanelActive(false); // Switch to sign-in panel
+    };
+
     const handleSignInSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -216,41 +217,6 @@ const ExpertForm: React.FC = () => {
         }
     };
 
-    // Add this function after your other handleInputChange functions
-    // const sendWelcomeEmail = async (name: string, email: string) => {
-    //     try {
-    //         const response = await fetch('http://localhost:5000/api/email/welcome', {
-    //             method: 'POST',
-    //             headers: {
-    //                 'Content-Type': 'application/json'
-    //             },
-    //             body: JSON.stringify({
-    //                 name,
-    //                 email,
-    //                 role: 'expert'
-    //             })
-    //         });
-
-    //         const data = await response.json();
-            
-    //         if (!response.ok) {
-    //             console.error('Error sending welcome email:', data.message);
-    //             return false;
-    //         }
-            
-    //         if (data.previewUrl) {
-    //             window.open(data.previewUrl, '_blank');
-    //             toast.success('Email preview opened in new tab');
-    //         }
-            
-    //         return true;
-    //     } catch (error) {
-    //         console.error('Error sending welcome email:', error);
-    //         return false;
-    //     }
-    // };
-
-    // Update your handleContinue function
     const handleContinue = async (e: React.MouseEvent<HTMLButtonElement>) => {
         e.preventDefault();
         
@@ -267,12 +233,6 @@ const ExpertForm: React.FC = () => {
             return;
         }
         
-        // Send welcome email
-        // const emailSent = await sendWelcomeEmail(formData.name, formData.email);
-        // if (emailSent) {
-        //     toast.success('Welcome email sent! Please check your inbox.');
-        // }
-        
         // Scroll to top of page smoothly
         window.scrollTo({top: 0, behavior: 'smooth'});
         
@@ -280,7 +240,6 @@ const ExpertForm: React.FC = () => {
         setFormStep(2);
     };
 
-    // Add this function to handle copying password to clipboard
     const copyPasswordToClipboard = () => {
         navigator.clipboard.writeText(generatedPassword)
           .then(() => {
@@ -308,7 +267,6 @@ const ExpertForm: React.FC = () => {
                                 </div>
                             )}
                             
-                            {/* Replace the AnimatePresence section with this single form */}
                             <div className="w-full">
                                 <input 
                                     type="text" 
@@ -345,7 +303,6 @@ const ExpertForm: React.FC = () => {
                                 </button>
                             </div>
                             
-                            {/* Show social icons on both steps */}
                             <span className="mt-4">or use your email for registration</span>
                             <SocialIcons />
                         </form>
@@ -407,7 +364,6 @@ const ExpertForm: React.FC = () => {
                                     md:max-w-sm md:mt-16 md:my-0 
                                     animate-scale-in shadow-2xl">
                         <div className="flex flex-col items-center text-center">
-                            {/* Success Icon - smaller on tablets */}
                             <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-14 md:h-14 bg-green-100 rounded-full flex items-center justify-center mb-4 md:mb-3">
                                 <svg 
                                     className="w-9 h-9 sm:w-12 sm:h-12 md:w-8 md:h-8 text-green-600" 
@@ -430,7 +386,6 @@ const ExpertForm: React.FC = () => {
                                 Here is your auto-generated password:
                             </p>
                             
-                            {/* Password container with copy button */}
                             <div className="relative bg-gray-100 p-3 sm:p-4 md:p-2 rounded-lg mb-4 md:mb-3 w-full">
                                 <div className="flex items-center justify-between">
                                     <p className="text-sm sm:text-lg md:text-base font-mono font-semibold tracking-wider break-all pr-10">
@@ -493,6 +448,47 @@ const ExpertForm: React.FC = () => {
                                 className="bg-green-600 hover:bg-green-700 text-white py-2 px-4 md:py-1.5 md:text-sm rounded-lg font-medium transition-colors w-full"
                             >
                                 I've Saved My Password
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Confirmation Popup */}
+            {showConfirmationPopup && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 overflow-y-auto">
+                    <div className="relative bg-white dark:bg-gray-800 rounded-xl p-6 max-w-md 
+                     sm:p-6 md:p-5 max-w-md w-full mx-auto my-8 
+                     md:absolute md:top-1/1 md:left-1/2 md:-translate-x-1/1 md:-translate-y-1/1 
+                     md:max-w-sm md:mt-16 md:my-0 
+                    w-full mx-auto shadow-2xl animate-scale-in">
+                        <div className="flex flex-col items-center text-center">
+                            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                                <svg 
+                                    className="w-10 h-10 text-green-600" 
+                                    fill="none" 
+                                    stroke="currentColor" 
+                                    viewBox="0 0 24 24" 
+                                    xmlns="http://www.w3.org/2000/svg"
+                                >
+                                    <path 
+                                        strokeLinecap="round" 
+                                        strokeLinejoin="round" 
+                                        strokeWidth="2" 
+                                        d="M5 13l4 4L19 7"
+                                    ></path>
+                                </svg>
+                            </div>
+                            
+                            <h2 className="text-xl font-bold mb-3">Registration Successful!</h2>
+                            <p className="text-base mb-5">
+                                Your account has been created successfully. Please sign in with your email and password.
+                            </p>
+                            
+                            <button 
+                                onClick={handleCloseConfirmation}
+                                className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-6 rounded-lg font-medium transition-colors w-full"
+                            >
+                                Sign In Now
                             </button>
                         </div>
                     </div>
