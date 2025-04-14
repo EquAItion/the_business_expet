@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS business_plans (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+
 -- Run these SQL commands to verify table structure
 SHOW TABLES;
 DESCRIBE users;

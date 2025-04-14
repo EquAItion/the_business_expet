@@ -95,9 +95,11 @@ app.use('/api/webinar', require('./routes/webinar'));
 app.use('/api/business-plans', require('./routes/businessPlans'));
 
 const profilesRouter = require('./routes/profiles');
+const expertAvailabilityRoutes = require('./routes/ExpertAvailability');
 
 // Pass the database connection to the routes
 app.use('/api/profiles', profilesRouter);
+app.use('/api/experts', expertAvailabilityRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

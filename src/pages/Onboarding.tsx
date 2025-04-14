@@ -135,9 +135,11 @@ const Onboarding = () => {
       
       const user = JSON.parse(userData);
       const token = user.token;
+
+      const API_BASE_URL = import.meta.env.VITE_API_URL;
       
       // Send data to API
-      const response = await fetch('http://localhost:5000/api/business-plans', {
+      const response = await fetch(`${API_BASE_URL}/api/business-plans`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

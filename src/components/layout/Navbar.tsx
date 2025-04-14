@@ -44,6 +44,7 @@ const Navbar = () => {
       first_name?: string;
       last_name?: string;
       designation?: string;
+      avatar?: string;
     };
   }>({});
 
@@ -150,7 +151,10 @@ const Navbar = () => {
               <DropdownMenu>
                 <DropdownMenuTrigger className="outline-none">
                   <Avatar className="h-9 w-9 cursor-pointer">
-                    <AvatarImage src={userData?.profile?.first_name} alt={userData?.profile?.avatar} />
+                    <AvatarImage 
+                      src={userData?.profile?.avatar} 
+                      alt={`${userData?.profile?.first_name || ''}`} 
+                    />
                     <AvatarFallback className="bg-primary text-white font-medium">
                       {getInitials()}
                     </AvatarFallback>
@@ -160,10 +164,10 @@ const Navbar = () => {
                   <DropdownMenuLabel>
                     <div className="flex flex-col">
                       <span className="font-bold">
-                        {userData?.profile?.first_name} {userData?.profile?.last_name}
+                        {userData?.profile?.first_name || ''} {userData?.profile?.last_name || ''}
                       </span>
                       <span className="text-sm text-muted-foreground">
-                        {userData?.profile?.designation || userData?.role}
+                        {userData?.profile?.designation || userData?.role || ''}
                       </span>
                     </div>
                   </DropdownMenuLabel>
@@ -270,14 +274,14 @@ const Navbar = () => {
                   <div className="py-2 border-t border-gray-200">
                     <div className="flex items-center space-x-3 py-2">
                       <Avatar className="h-9 w-9">
-                        <AvatarImage src={userData?.profile?.avatar} alt={userData?.profile?.first_name} />
+                        <AvatarImage src={userData?.profile?.avatar} alt={userData?.profile?.first_name[0]} />
                         <AvatarFallback className="bg-primary text-white font-medium">
                           {getInitials()}
                         </AvatarFallback>
                       </Avatar>
                       <div>
                         <div className="font-medium">
-                          {userData?.profile?.first_name} {userData?.profile?.last_name}
+                          {userData?.profile?.first_name[0]} {userData?.profile?.last_name[0]}
                         </div>
                         <div className="text-sm text-muted-foreground">
                           {userData?.profile?.designation || userData?.role}
@@ -297,7 +301,7 @@ const Navbar = () => {
                       <span>Dashboard</span>
                     </Link>
                     
-                    <Link
+                    {/* <Link
                       to="/messages"
                       onClick={() => {
                         window.scrollTo({top:0, behavior:'smooth'});
@@ -308,8 +312,8 @@ const Navbar = () => {
                       <MessageCircle className="h-4 w-4" />
                       <span>Messages</span>
                     </Link>
-                    
-                    <Link
+                     */}
+                    {/* <Link
                       to="/settings"
                       onClick={() => {
                         window.scrollTo({top:0, behavior:'smooth'});
@@ -319,7 +323,7 @@ const Navbar = () => {
                     >
                       <Settings className="h-4 w-4" />
                       <span>Settings</span>
-                    </Link>
+                    </Link> */}
                     
                     <button
                       onClick={() => {
@@ -361,10 +365,15 @@ const Navbar = () => {
               ×
             </button>
             <h2 className="text-2xl font-bold mb-4">Choose Your Role</h2>
+            <label htmlFor="role-select" className="sr-only">
+              Choose Your Role
+            </label>
             <select
+              id="role-select"
               value={selectedRole}
               onChange={handleRoleSelect}
               className="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label="Choose Your Role"
             >
               <option value="">Select a role...</option>
               <option value="solution-seeker">Solution Seeker</option>

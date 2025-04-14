@@ -38,6 +38,7 @@ const ExpertForm: React.FC = () => {
     // Add these new states to your component
     const [showPasswordPopup, setShowPasswordPopup] = useState(false);
     const [generatedPassword, setGeneratedPassword] = useState('');
+    const [copySuccess, setCopySuccess] = useState(false);
 
     const handleSignUpClick = (): void => {
         setRightPanelActive(true);
@@ -96,12 +97,13 @@ const ExpertForm: React.FC = () => {
             setGeneratedPassword(randomPassword);
             
             // Send welcome email
-            const emailSent = await sendWelcomeEmail(formData.name, formData.email);
-            if (emailSent) {
-                toast.success('Welcome email sent! Please check your inbox.');
-            }
+            // const emailSent = await sendWelcomeEmail(formData.name, formData.email);
+            // if (emailSent) {
+            //     toast.success('Welcome email sent! Please check your inbox.');
+            // }
+            const API_BASE_URL = import.meta.env.VITE_API_URL;
             
-            const response = await fetch('http://localhost:5000/api/auth/register', {
+            const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -113,21 +115,20 @@ const ExpertForm: React.FC = () => {
                 })
             });
 
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.message || 'Registration failed');
+            if (response.ok) {
+                const result = await response.json();
+                
+                // Store signup data with user_id for later profile completion
+                localStorage.setItem('expertSignupData', JSON.stringify({
+                    ...formData,
+                    user_id: result.data.user_id,
+                    token: result.data.token
+                }));
+                
+                // Show password popup
+                setShowPasswordPopup(true);
             }
 
-            // Store signup data and token in localStorage
-            localStorage.setItem('expertSignupData', JSON.stringify({
-                ...formData,
-                token: result.data.token
-            }));
-
-            // Show password popup
-            setShowPasswordPopup(true);
-            
             // Don't navigate yet - let the user see their password first
         } catch (error) {
             console.error('Registration error:', error);
@@ -147,8 +148,10 @@ const ExpertForm: React.FC = () => {
         e.preventDefault();
         setError('');
 
+        const API_BASE_URL = import.meta.env.VITE_API_URL;
+
         try {
-            const response = await fetch('http://localhost:5000/api/auth/login/expert', {
+            const response = await fetch(`${API_BASE_URL}/api/auth/login/expert`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -177,7 +180,7 @@ const ExpertForm: React.FC = () => {
             
             // Check profile status after login
             try {
-                const profileResponse = await fetch(`http://localhost:5000/api/experts/profile/${result.data.user_id}`, {
+                const profileResponse = await fetch(`${API_BASE_URL}/api/experts/profile/${result.data.user_id}`, {
                     headers: {
                         'Authorization': `Bearer ${result.data.token}`
                     }
@@ -214,38 +217,38 @@ const ExpertForm: React.FC = () => {
     };
 
     // Add this function after your other handleInputChange functions
-    const sendWelcomeEmail = async (name: string, email: string) => {
-        try {
-            const response = await fetch('http://localhost:5000/api/email/welcome', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    name,
-                    email,
-                    role: 'expert'
-                })
-            });
+    // const sendWelcomeEmail = async (name: string, email: string) => {
+    //     try {
+    //         const response = await fetch('http://localhost:5000/api/email/welcome', {
+    //             method: 'POST',
+    //             headers: {
+    //                 'Content-Type': 'application/json'
+    //             },
+    //             body: JSON.stringify({
+    //                 name,
+    //                 email,
+    //                 role: 'expert'
+    //             })
+    //         });
 
-            const data = await response.json();
+    //         const data = await response.json();
             
-            if (!response.ok) {
-                console.error('Error sending welcome email:', data.message);
-                return false;
-            }
+    //         if (!response.ok) {
+    //             console.error('Error sending welcome email:', data.message);
+    //             return false;
+    //         }
             
-            if (data.previewUrl) {
-                window.open(data.previewUrl, '_blank');
-                toast.success('Email preview opened in new tab');
-            }
+    //         if (data.previewUrl) {
+    //             window.open(data.previewUrl, '_blank');
+    //             toast.success('Email preview opened in new tab');
+    //         }
             
-            return true;
-        } catch (error) {
-            console.error('Error sending welcome email:', error);
-            return false;
-        }
-    };
+    //         return true;
+    //     } catch (error) {
+    //         console.error('Error sending welcome email:', error);
+    //         return false;
+    //     }
+    // };
 
     // Update your handleContinue function
     const handleContinue = async (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -265,10 +268,10 @@ const ExpertForm: React.FC = () => {
         }
         
         // Send welcome email
-        const emailSent = await sendWelcomeEmail(formData.name, formData.email);
-        if (emailSent) {
-            toast.success('Welcome email sent! Please check your inbox.');
-        }
+        // const emailSent = await sendWelcomeEmail(formData.name, formData.email);
+        // if (emailSent) {
+        //     toast.success('Welcome email sent! Please check your inbox.');
+        // }
         
         // Scroll to top of page smoothly
         window.scrollTo({top: 0, behavior: 'smooth'});
@@ -282,6 +285,8 @@ const ExpertForm: React.FC = () => {
         navigator.clipboard.writeText(generatedPassword)
           .then(() => {
             toast.success('Password copied to clipboard!');
+            setCopySuccess(true);
+            setTimeout(() => setCopySuccess(false), 2000);
           })
           .catch(err => {
             console.error('Failed to copy password: ', err);
@@ -421,7 +426,6 @@ const ExpertForm: React.FC = () => {
                             </div>
                             
                             <h2 className="text-xl sm:text-2xl md:text-lg font-bold mb-3 md:mb-2">Account Created!</h2>
-                            
                             <p className="text-base sm:text-lg md:text-sm mb-2">
                                 Here is your auto-generated password:
                             </p>
@@ -432,27 +436,51 @@ const ExpertForm: React.FC = () => {
                                     <p className="text-sm sm:text-lg md:text-base font-mono font-semibold tracking-wider break-all pr-10">
                                         {generatedPassword}
                                     </p>
-                                    <button 
-                                        onClick={copyPasswordToClipboard}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-blue-500 hover:bg-blue-600 text-white p-1.5 sm:p-2 md:p-1 rounded-md transition-colors"
-                                        aria-label="Copy password"
-                                        title="Copy password"
-                                    >
-                                        <svg 
-                                            xmlns="http://www.w3.org/2000/svg" 
-                                            className="h-4 w-4 sm:h-5 sm:w-5 md:h-4 md:w-4" 
-                                            fill="none" 
-                                            viewBox="0 0 24 24" 
-                                            stroke="currentColor"
+                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+                                        {copySuccess && (
+                                            <span className="text-green-600 text-xs mr-2 animate-fade-in">
+                                                Copied!
+                                            </span>
+                                        )}
+                                        <button 
+                                            onClick={copyPasswordToClipboard}
+                                            className={`${copySuccess ? 'bg-green-500' : 'bg-blue-500 hover:bg-blue-600'} text-white p-1.5 sm:p-2 md:p-1 rounded-md transition-colors`}
+                                            aria-label="Copy password"
+                                            title="Copy password"
                                         >
-                                            <path 
-                                                strokeLinecap="round" 
-                                                strokeLinejoin="round" 
-                                                strokeWidth={2} 
-                                                d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" 
-                                            />
-                                        </svg>
-                                    </button>
+                                            {copySuccess ? (
+                                                <svg 
+                                                    xmlns="http://www.w3.org/2000/svg" 
+                                                    className="h-4 w-4 sm:h-5 sm:w-5 md:h-4 md:w-4" 
+                                                    fill="none" 
+                                                    viewBox="0 0 24 24" 
+                                                    stroke="currentColor"
+                                                >
+                                                    <path 
+                                                        strokeLinecap="round" 
+                                                        strokeLinejoin="round" 
+                                                        strokeWidth={2} 
+                                                        d="M5 13l4 4L19 7" 
+                                                    />
+                                                </svg>
+                                            ) : (
+                                                <svg 
+                                                    xmlns="http://www.w3.org/2000/svg" 
+                                                    className="h-4 w-4 sm:h-5 sm:w-5 md:h-4 md:w-4" 
+                                                    fill="none" 
+                                                    viewBox="0 0 24 24" 
+                                                    stroke="currentColor"
+                                                >
+                                                    <path 
+                                                        strokeLinecap="round" 
+                                                        strokeLinejoin="round" 
+                                                        strokeWidth={2} 
+                                                        d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" 
+                                                    />
+                                                </svg>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                             
