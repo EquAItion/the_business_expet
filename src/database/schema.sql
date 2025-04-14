@@ -60,29 +60,6 @@ CREATE TABLE IF NOT EXISTS seeker_profiles (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- -- Users profiles table
--- CREATE TABLE IF NOT EXISTS users_profiles (
---     id VARCHAR(36) PRIMARY KEY,
---     user_id VARCHAR(36) NOT NULL,
---     first_name VARCHAR(50) NOT NULL,
---     last_name VARCHAR(50) NOT NULL,
---     email VARCHAR(50) NOT NULL UNIQUE,
---     date_of_birth DATE NOT NULL,
---     phone_number VARCHAR(15) NOT NULL,
---     company VARCHAR(100) NOT NULL,
---     country VARCHAR(100) NOT NULL,
---     state VARCHAR(100) NOT NULL,
---     city VARCHAR(100) NOT NULL,
---     bio TEXT NOT NULL,
---     key_goal TEXT NOT NULL,
---     linkedin_url VARCHAR(255),
---     gender VARCHAR(10) NOT NULL CHECK (gender IN ('Male', 'Female', 'Other')),
---     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
---     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
---     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
---     INDEX idx_user_id (user_id)
--- );
-
 -- Create auth_tokens table
 CREATE TABLE IF NOT EXISTS auth_tokens (
   id VARCHAR(36) PRIMARY KEY,
@@ -115,6 +92,31 @@ CREATE TABLE IF NOT EXISTS business_plans (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+CREATE TABLE expert_availability (
+  id INT NOT NULL AUTO_INCREMENT,
+  user_id VARCHAR(36) NOT NULL,  -- Changed from INT to match users.id
+  name VARCHAR(255) NULL,
+  day_of_week VARCHAR(50) NOT NULL,
+  start_time VARCHAR(20) NOT NULL,
+  end_time VARCHAR(20) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  
+  PRIMARY KEY (id),
+  -- Composite index for efficient lookups by user_id and day_of_week
+  INDEX idx_user_day (user_id, day_of_week),
+  -- Constraint to ensure each user can only have one entry per day
+  UNIQUE KEY unique_user_day (user_id, day_of_week),
+  
+  -- Foreign key constraint now correctly references VARCHAR(36)
+  CONSTRAINT fk_user_id FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+);
+
+-- Add a comment to the table for documentation
+ALTER TABLE expert_availability 
+  COMMENT 'Stores expert availability schedules by day of week';
 
 -- Run these SQL commands to verify table structure
 SHOW TABLES;
