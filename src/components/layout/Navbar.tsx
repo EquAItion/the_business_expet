@@ -80,7 +80,7 @@ const Navbar = () => {
     setSelectedRole(role);
     if (role) {
       setShowModal(false);
-      const path = role === "solution-seeker" ? "/exp/auth/seeker" : "/exp/auth/expert";
+      const path = role === "solution-seeker" ? "/auth/seeker" : "/auth/expert";
       window.location.href = path;
     }
   };
