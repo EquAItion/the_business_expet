@@ -80,7 +80,8 @@ const ExpertProfileForm: React.FC = () => {
         dateOfBirth: format(data.dateOfBirth, 'yyyy-MM-dd'),
       };
   
-      const response = await fetch('http://localhost:5000/api/experts/profile', {
+      const API_BASE_URL = import.meta.env.VITE_API_URL;
+      const response = await fetch(`${API_BASE_URL}/api/experts/profile`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
