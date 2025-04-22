@@ -157,7 +157,7 @@ const WebinarSection = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <h4 className="text-lg font-semibold mb-2">Date & Time</h4>
-                    <p className="text-muted-foreground">December 15, 2023<br />2:00 PM - 4:00 PM EST</p>
+                    <p className="text-muted-foreground">June 07, 2025<br />10:00 AM - 4:00 PM IST</p>
                   </div>
                   <div>
                     <h4 className="text-lg font-semibold mb-2">Platform</h4>

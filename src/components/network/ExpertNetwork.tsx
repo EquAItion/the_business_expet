@@ -229,8 +229,9 @@
 // };
 
 // export default ExpertNetwork;
-import { useState, useRef } from "react";
-import { cn } from "@/lib/utils";
+
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Bar, Pie } from "react-chartjs-2";
 import {
@@ -244,10 +245,32 @@ import {
   ArcElement,
 } from "chart.js";
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
-import BusinessStrategy from "@/img/network/1.jpg";
-import Manu from "@/img/network/3.jpg";
-import Digital from "@/img/network/4.jpg"; 
-import Financial from "@/img/network/5.jpg";
+
+import BusinessStrategy from "../../img/network/1.jpg";
+import HR from "../../img/network/hr.jpg";
+import Operations from "../../img/network/2.jpg";
+import Automation from "../../img/network/light-bulb-with-drawing-graph.jpg";
+import All from "../../img/network/customer-service-faqs-illustration.jpg";
+import BrandImage from "../../img/network/brand.webp";
+import Marketing from "../../img/network/brand.webp";
+import Financial from "../../img/network/5.jpg";
+import Digital from "../../img/network/4.jpg";
+import CustomerSupport from "../../img/network/gettyimages-1286147366-612x612.jpg";
+import QualityAssurance from "../../img/network/qa-quality-assurance.avif";
+import SupplyChain from "../../img/network/3.jpg";
+import ResearchDevelopment from "../../img/network/research-analysis.avif";
+
+interface Expert {
+  id: string;
+  firstName: string;
+  lastName: string;
+  designation: string;
+  expertise: string;
+  workExperience: string;
+  currentOrganization: string;
+  location: string;
+  areasOfHelp: string;
+}
 
 const industries = [
   "Business Strategy & Growth",
@@ -263,97 +286,118 @@ const industries = [
   "Research & Development",
 ];
 
-// Data for each industry
 const industryData = {
   "Business Strategy & Growth": {
-    about: "Life-changing strategies for business growth",
-    consultingHours: "N/A",
+    about: "Life-changing strategies for business growth ",
     expertLevel: "VP-level experts with 25+ years of experience",
-    projectsDelivered: "N/A",
-    totalExperts: "N/A", // Add total experts here
-  },
-  "HR & Workforce Solutions": {
-    about: "Optimizing workforce efficiency and engagement",
-    consultingHours: "N/A",
-    expertLevel: "HR Directors with 20+ years of experience",
-    projectsDelivered: "N/A",
-    totalExperts: "N/A", // Add total experts here
+    totalExperts: 6,
   },
   "Operations & Manufacturing": {
     about: "Streamlining operations for maximum efficiency",
     consultingHours: "N/A",
     expertLevel: "Operations Managers with 25+ years of experience",
-    projectsDelivered: "N/A",
-    totalExperts: "N/A", // Add total experts here
+    totalExperts: 16,
   },
   "Automation & Workflow": {
     about: "Streamlining operations with cutting-edge automation",
     consultingHours: "N/A",
     expertLevel: "Senior Managers with 20+ years of experience",
-    projectsDelivered: "N/A",
-    totalExperts: "N/A", // Add total experts here
+    totalExperts: 9,
   },
   "Marketing & Brand Positioning": {
     about: "Crafting compelling narratives for brands",
     consultingHours: "N/A",
     expertLevel: "Marketing Directors with 20+ years of experience",
-    projectsDelivered: "N/A",
-    totalExperts: "N/A", // Add total experts here
+    totalExperts: 16,
   },
   "Financial & Risk Advisory": {
     about: "Navigating financial landscapes with expertise",
     consultingHours: "N/A",
     expertLevel: "CFOs with 25+ years of experience",
-    projectsDelivered: "N/A",
-    totalExperts: "N/A", // Add total experts here
+    totalExperts: "N/A",
   },
   "Digital Transformation & IT": {
     about: "Transforming businesses through technology",
     consultingHours: "N/A",
     expertLevel: "CTOs with 20+ years of experience",
-    projectsDelivered: "N/A",
-    totalExperts: "N/A", // Add total experts here
+    totalExperts: 7,
   },
   "Customer Support Excellence": {
     about: "Enhancing customer satisfaction through support",
     consultingHours: "N/A",
     expertLevel: "Customer Support Managers with 20+ years of experience",
-    projectsDelivered: "N/A",
-    totalExperts: "N/A", // Add total experts here
+    totalExperts: 11,
   },
   "Quality Assurance": {
     about: "Ensuring product quality and reliability",
     consultingHours: "N/A",
     expertLevel: "QA Managers with 20+ years of experience",
-    projectsDelivered: "N/A",
-    totalExperts: "N/A", // Add total experts here
+    totalExperts: 8,
   },
   "Supply Chain Management": {
     about: "Optimizing supply chain efficiency and effectiveness",
     consultingHours: "N/A",
     expertLevel: "Supply Chain Managers with 20+ years of experience",
-    projectsDelivered: "N/A",
-    totalExperts: "N/A", // Add total experts here
+    totalExperts: 10,
   },
   "Research & Development": {
     about: "Innovating for the future through research",
     consultingHours: "N/A",
     expertLevel: "R&D Managers with 20+ years of experience",
-    projectsDelivered: "N/A",
-    totalExperts: "N/A", // Add total experts here
+    totalExperts: 8,
+  },
+  "HR & Workforce Solutions": {
+    about: "Optimizing workforce efficiency and engagement",
+    consultingHours: "N/A",
+    expertLevel: "HR Directors with 20+ years of experience",
+    totalExperts: 12,
   },
   "All": {
     about: "Comprehensive expertise across all domains",
     consultingHours: 520,
     expertLevel: "Tier 1-level experts from various industries",
     projectsDelivered: 200,
-    totalExperts: "300+", // Add total experts here
+    totalExperts: "300+",
+    image: All,
   },
 };
 
+function cn(...classes: (string | boolean | undefined | null)[]) {
+  return classes.filter(Boolean).join(" ");
+}
+
 const ExpertNetwork = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [experts, setExperts] = useState<Expert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedIndustry, setSelectedIndustry] = useState<string>("All");
+  const [activeExpert, setActiveExpert] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchExperts = async () => {
+      const API_BASE_URL = import.meta.env.VITE_API_URL;
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/experts/profiles`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch expert profiles');
+        }
+        const result = await response.json();
+        if (result.success) {
+          setExperts(result.data);
+        } else {
+          throw new Error(result.message || 'Failed to load expert profiles');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load expert profiles');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchExperts();
+  }, []);
 
   // Horizontal scrolling for industries
   const scrollLeft = () => {
@@ -370,36 +414,28 @@ const ExpertNetwork = () => {
 
   const data = industryData[selectedIndustry] || industryData["All"];
 
-  // Chart data
-  const chartData = {
-    labels: ["Consulting Hours", "Projects Delivered"],
-    datasets: [
-      {
-        label: selectedIndustry,
-        data: [data.consultingHours, data.projectsDelivered],
-        backgroundColor: ["#8B5CF6", "#34D399"],
-        borderColor: ["#7C3AED", "#059669"],
-        borderWidth: 1,
-      },
-    ],
+  // Helper function to extract years from expertLevel string
+  const extractYears = (expertLevel: string): number => {
+    const match = expertLevel.match(/(\d+)\+?\s*years?/i);
+    return match ? parseInt(match[1], 10) : 0;
   };
 
-  const chartOptions = {
-    responsive: true,
-    plugins: {
-      legend: {
-        position: "top" as const,
-      },
-    },
-  };
+  // Compute cumulative experience dynamically
+  const cumulativeExperience = (() => {
+    const totalExperts = data.totalExperts;
+    const years = extractYears(data.expertLevel);
+    if (typeof totalExperts === "number" && years > 0) {
+      return totalExperts * years;
+    }
+    return 0;
+  })();
 
   return (
     <section id="network" className="section-container relative z-10">
       <div className="text-center mb-16">
         <span className="badge badge-purple mb-4">Expert Network</span>
         <h2 className="section-title">
-          Guiding You Towards Success:{" "}
-          <span className="text-gradient">Your Path to Achievement Starts Here</span>
+          Guiding You Towards Success: <span className="text-gradient"> Your Path to Achievement Starts Here</span>
         </h2>
         <p className="section-subtitle mx-auto">
           Unleashing Expertise: Your Ultimate Source for Expert Guidance
@@ -468,7 +504,7 @@ const ExpertNetwork = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <div className="p-8 bg-white shadow-lg rounded-lg w-full max-w-4xl h-[400px] flex flex-col md:flex-row items-center gap-8">
+        <div className="p-8 bg-white shadow-lg rounded-lg w-full max-w-4xl h-auto flex flex-col md:flex-row items-center gap-8 max-h-[600px] md:max-h-[400px]">
           {/* Left Side: Written Content */}
           <div className="flex-1">
             <h3 className="text-2xl font-bold text-center md:text-left mb-6">{selectedIndustry}</h3>
@@ -479,13 +515,10 @@ const ExpertNetwork = () => {
               <strong>Total Experts:</strong> {data.totalExperts}
             </p>
             <p className="text-base text-muted-foreground mb-4">
-              <strong>Total Consulting Hours:</strong> {data.consultingHours.toLocaleString()}
-            </p>
-            <p className="text-base text-muted-foreground mb-4">
               <strong>Expert Level:</strong> {data.expertLevel}
             </p>
-            <p className="text-base text-muted-foreground mb-6">
-              <strong>Projects Delivered:</strong> {data.projectsDelivered.toLocaleString()}
+            <p className="text-base text-muted-foreground mb-4">
+              <strong>Cumulative Experience:</strong> {cumulativeExperience} years
             </p>
           </div>
 
@@ -494,98 +527,97 @@ const ExpertNetwork = () => {
             {selectedIndustry === "Business Strategy & Growth" ? (
               <div className="w-full h-full flex justify-center items-center">
                 <img
-                  src= {BusinessStrategy} // Replace with the actual path to your image
+                  src={BusinessStrategy}
                   alt="Business Strategy & Growth"
-                  className="rounded-lg shadow-lg w-full h-auto max-w-sm"
+                  className="rounded-lg shadow-lg w-full h-auto max-w-full max-w-none"
                 />
               </div>
             ) : selectedIndustry === "HR & Workforce Solutions" ? (
               <div className="w-full h-full flex justify-center items-center">
-                <Pie
-                  data={{
-                    labels: ["Employee Engagement", "Talent Acquisition", "Training & Development", "Retention Strategies"],
-                    datasets: [
-                      {
-                        data: [40, 30, 20, 10],
-                        backgroundColor: ["#4F46E5", "#10B981", "#FBBF24", "#EF4444"],
-                        borderColor: ["#4338CA", "#059669", "#D97706", "#DC2626"],
-                        borderWidth: 1,
-                      },
-                    ],
-                  }}
-                  options={{
-                    responsive: true,
-                    plugins: {
-                      legend: {
-                        position: "bottom",
-                      },
-                    },
-                  }}
-                  width={150} // Adjust the width of the pie chart
-                  height={150} // Adjust the height of the pie chart
+                <img
+                  src={HR}
+                  alt="HR & Workforce Solutions"
+                  className="rounded-lg shadow-lg w-full h-auto max-w-full max-w-none"
                 />
               </div>
             ) : selectedIndustry === "Operations & Manufacturing" ? (
               <div className="w-full h-full flex justify-center items-center">
-                <Pie
-                  data={{
-                    labels: ["Process Optimization", "Supply Chain Management", "Quality Control", "Cost Reduction"],
-                    datasets: [
-                      {
-                        data: [35, 25, 20, 20],
-                        backgroundColor: ["#3B82F6", "#10B981", "#F59E0B", "#EF4444"],
-                        borderColor: ["#2563EB", "#059669", "#D97706", "#DC2626"],
-                        borderWidth: 1,
-                      },
-                    ],
-                  }}
-                  options={{
-                    responsive: true,
-                    plugins: {
-                      legend: {
-                        position: "bottom",
-                      },
-                    },
-                  }}
-                  width={150} // Adjust the width of the pie chart
-                  height={150} // Adjust the height of the pie chart
+                <img
+                  src={Operations}
+                  alt="Operations & Manufacturing"
+                  className="rounded-lg shadow-lg w-full h-auto max-w-full max-w-none"
                 />
               </div>
-              ) : selectedIndustry === "Digital Transformation & IT" ? (
-                <div className="w-full h-full flex justify-center items-center">
-                  <img
-                    src={Digital} // Path to the Digital Transformation & IT image
-                    alt="Digital Transformation & IT"
-                    className="rounded-lg shadow-lg w-full h-auto max-w-sm"
-                  />
-                </div>
-              ) : selectedIndustry === "Financial & Risk Advisory" ? (
-                <div className="w-full h-full flex justify-center items-center">
-                  <img
-                    src={Financial} // Path to the Financial & Risk Advisory image
-                    alt="Financial & Risk Advisory"
-                    className="rounded-lg shadow-lg w-full h-auto max-w-sm object-cover" // Added object-cover for consistent sizing
-                    style={{ maxWidth: "300px", height: "300px" }} // Enforcing consistent size
-                  />
-                </div>
-              ):selectedIndustry === "Supply Chain Management"?(
-                <div className="w-full h-full flex justify-center items-center">
-                  <img
-                    src={Manu} // Path to the Supply Chain Management image
-                    alt="Supply Chain Management"
-                    className="rounded-lg shadow-lg w-full h-auto max-w-sm object-cover" // Added object-cover for consistent sizing
-                    style={{ maxWidth: "400px", height: "230px" }} // Enforcing consistent size
-                  />
-                </div>
-            ) : (
+            ) : selectedIndustry === "Automation & Workflow" ? (
               <div className="w-full h-full flex justify-center items-center">
-                <Bar
-                  data={chartData}
-                  options={{
-                    ...chartOptions,
-                    maintainAspectRatio: true,
-                  }}
-                  height={150} // Adjust the height of the bar chart
+                <img
+                  src={Automation}
+                  alt="Automation & Workflow"
+                  className="rounded-lg shadow-lg w-full h-auto max-w-full max-w-none"
+                />
+              </div>
+            ) : selectedIndustry === "Marketing & Brand Positioning" ? (
+              <div className="w-full h-full flex justify-center items-center">
+                <img
+                  src={Marketing}
+                  alt="Marketing & Brand Positioning"
+                  className="rounded-lg shadow-lg w-full h-auto max-w-full max-w-none"
+                />
+              </div>
+            ) : selectedIndustry === "Financial & Risk Advisory" ? (
+              <div className="w-full h-full flex justify-center items-center">
+                <img
+                  src={Financial}
+                  alt="Financial & Risk Advisory"
+                  className="rounded-lg shadow-lg w-full h-auto max-w-full max-w-none object-cover"
+                />
+              </div>
+            ) : selectedIndustry === "Digital Transformation & IT" ? (
+              <div className="w-full h-full flex justify-center items-center">
+                <img
+                  src={Digital}
+                  alt="Digital Transformation & IT"
+                  className="rounded-lg shadow-lg w-full h-auto max-w-full max-w-none"
+                />
+              </div>
+            ) : selectedIndustry === "Customer Support Excellence" ? (
+              <div className="w-full h-full flex justify-center items-center">
+                <img
+                  src={CustomerSupport}
+                  alt="Customer Support Excellence"
+                  className="rounded-lg shadow-lg w-full h-auto max-w-full max-w-none"
+                />
+              </div>
+            ) : selectedIndustry === "Quality Assurance" ? (
+              <div className="w-full h-full flex justify-center items-center">
+                <img
+                  src={QualityAssurance}
+                  alt="Quality Assurance"
+                  className="rounded-lg shadow-lg w-full h-auto max-w-full max-w-none"
+                />
+              </div>
+            ) : selectedIndustry === "Supply Chain Management" ? (
+              <div className="w-full h-full flex justify-center items-center">
+                <img
+                  src={SupplyChain}
+                  alt="Supply Chain Management"
+                  className="rounded-lg shadow-lg w-full h-auto max-w-full max-w-none object-cover"
+                />
+              </div>
+            ) : selectedIndustry === "Research & Development" ? (
+              <div className="w-full h-full flex justify-center items-center">
+                <img
+                  src={ResearchDevelopment}
+                  alt="Research & Development"
+                  className="rounded-lg shadow-lg w-full h-auto max-w-full max-w-none"
+                />
+              </div>
+            ) : (
+              <div className="w-full h-full flex justify-center items-center max-h-full">
+                <img
+                  src={data.image || BrandImage}
+                  alt={selectedIndustry}
+                  className="rounded-lg shadow-lg w-full h-auto max-w-full max-w-none max-h-full object-contain"
                 />
               </div>
             )}
@@ -593,6 +625,11 @@ const ExpertNetwork = () => {
         </div>
       </motion.div>
 
+      {/* Expert Profiles */}
+      {/* Removed expert profiles rendering as per user request */}
+
+      {/* Call to action */}
+      {/* Removed call to action section as per user request */}
     </section>
   );
 };
