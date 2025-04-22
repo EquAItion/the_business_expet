@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
-import { useHref } from "react-router-dom";
-import { FaPhone,FaEnvelope,FaMapMarkerAlt } from "react-icons/fa";
+import { Link } from "react-router-dom"; // Change from useHref to Link
+import { FaPhone, FaEnvelope, FaMapMarkerAlt } from "react-icons/fa";
 
 const Footer = () => {
   return (
@@ -60,21 +60,30 @@ const Footer = () => {
             <h3 className="font-bold mb-6">Quick Links</h3>
             <ul className="space-y-4">
               {[
-                { label: "Home", href: "#" },
-                { label: "Expert Network", href: "network" },
-                { label: "Products", href: "products" },
-                { label: "Features", href: "features" },
-                { label: "Insights", href: "insights" },
-                { label: "Webinar", href: "webinar" },
-                { label: "Contact", href: "contact" },
+                { label: "Home", href: "/" },
+                { label: "Expert Network", href: "/network" },
+                { label: "Products", href: "/products" },
+                { label: "Features", href: "/features" },
+                { label: "Insights", href: "/insights" },
+                { label: "Webinar", href: "/webinar" },
+                { label: "Contact", href: "/#contact" },
               ].map((link) => (
                 <li key={link.label}>
-                  <a 
-                    href={link.href}
-                    className="text-muted-foreground hover:text-foreground transition-colors link-underline"
-                  >
-                    {link.label}
-                  </a>
+                  {link.href.startsWith("/#") ? (
+                    <a 
+                      href={link.href}
+                      className="text-muted-foreground hover:text-foreground transition-colors link-underline"
+                    >
+                      {link.label}
+                    </a>
+                  ) : (
+                    <Link 
+                      to={link.href}
+                      className="text-muted-foreground hover:text-foreground transition-colors link-underline"
+                    >
+                      {link.label}
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>
