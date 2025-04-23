@@ -121,8 +121,8 @@ const Navbar = () => {
         className={cn(
           "fixed top-0 left-0 right-0 z-50 transition-all duration-300 ease-in-out py-4 px-4 sm:px-6 lg:px-8",
           isScrolled
-            ? "bg-white/80 backdrop-blur-lg shadow-sm"
-            : "bg-white/40 backdrop-blur-sm" // Changed from bg-transparent to improve visibility
+            ? "bg-white/80  shadow-sm"
+            : "bg-white/40 " // Changed from bg-transparent to improve visibility
         )}
         style={{ 
           WebkitTransform: "translateZ(0)", // iOS Safari fix for fixed elements
