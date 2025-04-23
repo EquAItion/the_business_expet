@@ -3,6 +3,14 @@ import { Link } from "react-router-dom"; // Change from useHref to Link
 import { FaPhone, FaEnvelope, FaMapMarkerAlt } from "react-icons/fa";
 
 const Footer = () => {
+  // Add scroll to top handler
+  const handleScrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
+  };
+
   return (
     <footer id="contact" className="bg-gradient-to-b from-transparent to-secondary/30 pt-5 pb-5">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -66,7 +74,7 @@ const Footer = () => {
                 { label: "Features", href: "/features" },
                 { label: "Insights", href: "/insights" },
                 { label: "Webinar", href: "/webinar" },
-                { label: "Contact", href: "/#contact" },
+                { label: "Contact", href: "/contact" },
               ].map((link) => (
                 <li key={link.label}>
                   {link.href.startsWith("/#") ? (
@@ -79,6 +87,7 @@ const Footer = () => {
                   ) : (
                     <Link 
                       to={link.href}
+                      onClick={handleScrollToTop}
                       className="text-muted-foreground hover:text-foreground transition-colors link-underline"
                     >
                       {link.label}
