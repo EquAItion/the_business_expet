@@ -107,6 +107,14 @@ const Navbar = () => {
     return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
   };
 
+  // Add scroll to top handler
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
+  };
+
   return (
     <>
       <header
@@ -123,7 +131,7 @@ const Navbar = () => {
         }}
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link to="/" className="text-2xl font-display font-bold text-gradient">
+          <Link to="/" onClick={scrollToTop} className="text-2xl font-display font-bold text-gradient">
             ExpertiseStation
           </Link>
 
@@ -134,6 +142,7 @@ const Navbar = () => {
               <Link
                 key={item.label}
                 to={item.href}
+                onClick={scrollToTop}
                 className="font-medium link-underline text-foreground/80 hover:text-foreground transition-colors"
               >
                 {item.label}
@@ -179,7 +188,7 @@ const Navbar = () => {
                   <DropdownMenuSeparator />
                   
                   <DropdownMenuItem onClick={() => {
-                    window.scrollTo({top:0, behavior:'smooth'});
+                    scrollToTop();
                     navigate(`/dashboard`);
                   }}>
                     <User className="mr-2 h-4 w-4" />
@@ -187,7 +196,7 @@ const Navbar = () => {
                   </DropdownMenuItem>
                   
                   {/* <DropdownMenuItem onClick={() => {
-                    window.scrollTo({top:0, behavior:'smooth'});
+                    scrollToTop();
                     navigate('/messages');
                   }}>
                     <MessageCircle className="mr-2 h-4 w-4" />
@@ -195,7 +204,7 @@ const Navbar = () => {
                   </DropdownMenuItem> */}
                   
                   <DropdownMenuItem onClick={() => {
-                    window.scrollTo({top:0, behavior:'smooth'});
+                    scrollToTop();
                     navigate('/appointments');
                   }}>
                     <Calendar className="mr-2 h-4 w-4" />
@@ -203,7 +212,7 @@ const Navbar = () => {
                   </DropdownMenuItem>
                   
                   {/* <DropdownMenuItem onClick={() => {
-                    window.scrollTo({top:0, behavior:'smooth'});
+                    scrollToTop();
                     navigate('/settings');
                   }}>
                     <Settings className="mr-2 h-4 w-4" />
@@ -213,7 +222,7 @@ const Navbar = () => {
                   <DropdownMenuSeparator />
                   
                   <DropdownMenuItem onClick={() => {
-                    window.scrollTo({top:0, behavior:'smooth'});
+                    scrollToTop();
                     handleLogout();
                   }}>
                     <LogOut className="mr-2 h-4 w-4" />
@@ -254,7 +263,10 @@ const Navbar = () => {
                 <Link
                   key={item.label}
                   to={item.href}
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  onClick={() => {
+                    scrollToTop();
+                    setIsMobileMenuOpen(false);
+                  }}
                   className="font-medium text-foreground/80 hover:text-foreground py-2 transition-colors"
                 >
                   {item.label}
@@ -266,7 +278,10 @@ const Navbar = () => {
                 <Link
                   key={item.label}
                   to={item.href}
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  onClick={() => {
+                    scrollToTop();
+                    setIsMobileMenuOpen(false);
+                  }}
                   className="font-medium text-foreground/80 hover:text-foreground py-2 transition-colors"
                 >
                   {item.label}
@@ -297,7 +312,7 @@ const Navbar = () => {
                     <Link
                       to={`/${userData.role}/dashboard/${userData.user_id}`}
                       onClick={() => {
-                        window.scrollTo({top:0, behavior:'smooth'});
+                        scrollToTop();
                         setIsMobileMenuOpen(false);
                       }}
                       className="flex items-center space-x-2 py-2 text-foreground/80 hover:text-foreground"
@@ -309,19 +324,18 @@ const Navbar = () => {
                     {/* <Link
                       to="/messages"
                       onClick={() => {
-                        window.scrollTo({top:0, behavior:'smooth'});
+                        scrollToTop();
                         setIsMobileMenuOpen(false);
                       }}
                       className="flex items-center space-x-2 py-2 text-foreground/80 hover:text-foreground"
                     >
                       <MessageCircle className="h-4 w-4" />
                       <span>Messages</span>
-                    </Link>
-                     */}
+                    </Link> */}
                     {/* <Link
                       to="/settings"
                       onClick={() => {
-                        window.scrollTo({top:0, behavior:'smooth'});
+                        scrollToTop();
                         setIsMobileMenuOpen(false);
                       }}
                       className="flex items-center space-x-2 py-2 text-foreground/80 hover:text-foreground"
@@ -332,7 +346,7 @@ const Navbar = () => {
                     
                     <button
                       onClick={() => {
-                        window.scrollTo({top:0, behavior:'smooth'});
+                        scrollToTop();
                         handleLogout();
                         setIsMobileMenuOpen(false);
                       }}
