@@ -102,10 +102,11 @@ const Footer = () => {
             <h3 className="font-bold mb-6">Legal</h3>
             <ul className="space-y-4">
               {[
-                { label: "Terms of Service", href: "#" },
-                { label: "Privacy Policy", href: "#" },
-                { label: "Data Processing", href: "#" },
-                { label: "Cookie Policy", href: "#" },
+                { label: "Terms of Service", href: "/termofservice" },
+                { label: "Privacy Policy", href: "/privacypolicy" },
+                { label: "Data Processing", href: "/dataprocessing" },
+                { label: "Cookie Policy", href: "/cookiepolicy" },
+                { label: "Refund Policy", href: "/refundpolicy" },
               ].map((link) => (
                 <li key={link.label}>
                   <a 

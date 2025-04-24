@@ -23,6 +23,11 @@ import ProductShowcase from "./components/products/ProductShowcase";
 import Onboarding from "./pages/Onboarding";
 import AIdashboard from "./pages/AIdashboard";
 import SeekerDashboard from "./components/dashboard/SeekerDashbord";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import DataProcessing from "./pages/DataProcessing";
+import TermsOfService from "./pages/TermsOfService";
+import CookiePolicy from "./pages/CookiePolicy";
+import RefundPolicy from "./pages/RefundPolicy";
 
 
 
@@ -53,6 +58,11 @@ const App = () => (
           <Route path="/productshowcase" element={<ProductShowcase />} />
           <Route path="/dashboard" element={<ExpertDashboard />} />
           <Route path="/seekerdashboard" element={<SeekerDashboard />} />
+          <Route path="/privacypolicy" element={<PrivacyPolicy />} />
+          <Route path="/dataprocessing" element={<DataProcessing />} />
+          <Route path="/termofservice" element={<TermsOfService />} />
+          <Route path="/cookiepolicy" element={<CookiePolicy />} />
+          <Route path="/refundpolicy" element={<RefundPolicy />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
