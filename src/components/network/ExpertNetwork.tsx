@@ -314,7 +314,7 @@ const industryData = {
     about: "Navigating financial landscapes with expertise",
     consultingHours: "N/A",
     expertLevel: "CFOs with 25+ years of experience",
-    totalExperts: "N/A",
+    totalExperts: 7,
   },
   "Digital Transformation & IT": {
     about: "Transforming businesses through technology",
