@@ -160,10 +160,10 @@ const FeatureCards = () => {
             
             <p className="text-muted-foreground mb-6">{feature.description}</p>
             
-            <button className="flex items-center text-primary font-medium hover:underline group transition-all">
+            {/* <button className="flex items-center text-primary font-medium hover:underline group transition-all">
               Learn more
               <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </button>
+            </button> */}
           </GlassCard>
         ))}
       </div>
