@@ -34,7 +34,7 @@ const Footer = () => {
                       : social === "facebook"
                       ? "https://www.facebook.com/share/1FRZUsGyun/?mibextid=qi2Omg"
                       : social === "instagram" 
-                      ? "https://www.instagram.com/expertise__station?igsh=dDBsOTB3N2NyYXlu"
+                      ? "https://www.instagram.com/expertisestation?igsh=amp0NzF6ZHpwdTc1"
                       : "https://www.youtube.com/@brenstoneinternational1409"
                   }
                   className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center hover:bg-primary hover:text-white transition-colors"
