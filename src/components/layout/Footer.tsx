@@ -159,7 +159,7 @@ const Footer = () => {
               <p>+91 124 4071461</p>
             
               <FaEnvelope className="contact-icon" />
-              <p>info@brenstoneinternational.com</p>
+              <p>info@expertisestation.com</p>
             
               <FaMapMarkerAlt className="contact-icon" />
               <p>418, Vipul Business Park,<br />
