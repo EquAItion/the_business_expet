@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { Send, User, Bot, X, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -68,7 +67,7 @@ const AIChat = () => {
     return (
       <Button 
         onClick={toggleChat}
-        className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full shadow-lg"
+        className="fixed bottom-4 right-4 z-40 h-14 w-14 rounded-full shadow-lg md:bottom-8 md:right-8"
       >
         <Bot className="h-6 w-6" />
       </Button>
@@ -76,30 +75,40 @@ const AIChat = () => {
   }
   
   return (
-    <div className="fixed bottom-6 right-6 w-full max-w-md z-40 rounded-xl overflow-hidden shadow-lg border border-gray-200 bg-white animate-scale-in">
-      <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-blue-50">
+    <div
+      className="
+        fixed bottom-4 right-4 z-50
+        w-[95vw] max-w-xs
+        md:w-96 md:max-w-md
+        rounded-t-xl md:rounded-xl
+        overflow-hidden shadow-xl border border-gray-200 bg-white animate-scale-in
+        flex flex-col
+      "
+      style={{ minHeight: '400px', maxHeight: '80vh' }}
+    >
+      <div className="flex items-center justify-between p-3 border-b border-gray-100 bg-blue-50">
         <div className="flex items-center">
           <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center mr-2">
             <Bot className="h-4 w-4 text-white" />
           </div>
-          <h3 className="font-display font-semibold">Business Insights AI</h3>
+          <h3 className="font-display font-semibold text-base md:text-lg">Business Insights AI</h3>
         </div>
         <Button variant="ghost" size="icon" onClick={toggleChat}>
           <X className="h-5 w-5" />
         </Button>
       </div>
       
-      <div className="h-96 overflow-y-auto p-4 bg-gray-50">
+      <div className="flex-1 overflow-y-auto p-2 md:p-4 bg-gray-50">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <Bot className="h-12 w-12 text-blue-500 mb-4" />
-            <h3 className="font-display font-semibold text-lg mb-2">AI Business Insights</h3>
-            <p className="text-gray-600 mb-6">Ask me anything about business strategy, market trends, or operational improvements.</p>
+          <div className="flex flex-col items-center justify-center h-full text-center px-2 md:px-4">
+            <Bot className="h-10 w-10 text-blue-500 mb-2" />
+            <h3 className="font-display font-semibold text-base md:text-lg mb-1">AI Business Insights</h3>
+            <p className="text-gray-600 mb-4 text-xs md:text-sm">Ask me anything about business strategy, market trends, or operational improvements.</p>
             <div className="w-full grid gap-2">
               {suggestedQuestions.map((question, index) => (
                 <button
                   key={index}
-                  className="text-left text-sm bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors flex items-center justify-between group"
+                  className="text-left text-xs md:text-sm bg-white p-2 md:p-3 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors flex items-center justify-between group"
                   onClick={() => handleSuggestedQuestion(question)}
                 >
                   <span>{question}</span>
@@ -109,14 +118,14 @@ const AIChat = () => {
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3 md:space-y-4">
             {messages.map((message, index) => (
               <div
                 key={index}
                 className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                  className={`max-w-[80%] rounded-2xl px-3 py-2 md:px-4 md:py-3 ${
                     message.role === 'user' 
                       ? 'bg-blue-600 text-white rounded-tr-none'
                       : 'bg-white border border-gray-200 rounded-tl-none'
@@ -128,18 +137,18 @@ const AIChat = () => {
                     ) : (
                       <User className="h-4 w-4 mr-1 text-white" />
                     )}
-                    <span className={`text-xs ${message.role === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>
+                    <span className={`text-[10px] md:text-xs ${message.role === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>
                       {message.role === 'user' ? 'You' : 'AI Assistant'} • {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  <p className="text-xs md:text-sm whitespace-pre-wrap">{message.content}</p>
                 </div>
               </div>
             ))}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-none px-4 py-3 max-w-[80%]">
-                  <div className="flex items-center space-x-2">
+                <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-none px-3 py-2 md:px-4 md:py-3 max-w-[80%]">
+                  <div className="flex items-center space-x-1 md:space-x-2">
                     <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
                     <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
                     <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
@@ -152,13 +161,13 @@ const AIChat = () => {
         )}
       </div>
       
-      <form onSubmit={handleSubmit} className="p-3 border-t border-gray-100">
+      <form onSubmit={handleSubmit} className="p-2 md:p-3 border-t border-gray-100">
         <div className="relative">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask for business insights..."
-            className="resize-none pr-12 min-h-[60px] max-h-[180px]"
+            className="resize-none pr-10 min-h-[40px] max-h-[90px] text-xs md:text-sm"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -169,7 +178,7 @@ const AIChat = () => {
           <Button 
             type="submit" 
             size="icon" 
-            className="absolute right-2 bottom-2"
+            className="absolute right-1 bottom-1 md:right-2 md:bottom-2"
             disabled={!input.trim() || isLoading}
           >
             <Send className="h-4 w-4" />
