@@ -84,18 +84,12 @@ const Contact = () => {
     setIsSubmitting(true);
     
     try {
-      // Example API call - replace with your actual submission endpoint
       const API_BASE_URL = import.meta.env.VITE_API_URL || '';
       
       // Log for debugging purposes
       console.log('Sending contact form data:', formData);
       
-      // Simulate API call with timeout
-      // In production, replace with actual fetch call to your backend
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      /* 
-      // Uncomment and modify this for actual API integration
+      // Send the actual API request
       const response = await fetch(`${API_BASE_URL}/api/contact`, {
         method: 'POST',
         headers: {
@@ -104,12 +98,11 @@ const Contact = () => {
         body: JSON.stringify(formData)
       });
       
-      if (!response.ok) {
-        throw new Error('Failed to submit form');
-      }
-      
       const data = await response.json();
-      */
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to submit form');
+      }
       
       // On success
       toast.success("Thank you! Your message has been sent successfully.");
@@ -123,7 +116,7 @@ const Contact = () => {
       });
     } catch (error) {
       console.error('Error submitting form:', error);
-      toast.error("There was a problem submitting your message. Please try again.");
+      toast.error(error instanceof Error ? error.message : "There was a problem submitting your message. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -152,6 +145,8 @@ const Contact = () => {
                   name="name" 
                   value={formData.name}
                   onChange={handleChange}
+                  aria-required="true"
+                  placeholder="Enter your full name"
                   className={`mt-1 block w-full rounded-md border ${errors.name ? 'border-red-500' : 'border-foreground/20'} bg-background px-3 py-2 text-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary`}
                 />
                 {errors.name && <p className="mt-1 text-sm text-red-500">{errors.name}</p>}
@@ -165,6 +160,8 @@ const Contact = () => {
                   name="email"
                   value={formData.email} 
                   onChange={handleChange}
+                  aria-required="true"
+                  placeholder="example@email.com"
                   className={`mt-1 block w-full rounded-md border ${errors.email ? 'border-red-500' : 'border-foreground/20'} bg-background px-3 py-2 text-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary`}
                 />
                 {errors.email && <p className="mt-1 text-sm text-red-500">{errors.email}</p>}
@@ -178,6 +175,8 @@ const Contact = () => {
                   name="phone"
                   value={formData.phone}
                   onChange={handleChange}
+                  placeholder="e.g., +91 123 456 7890"
+                  aria-required="true"
                   className={`mt-1 block w-full rounded-md border ${errors.phone ? 'border-red-500' : 'border-foreground/20'} bg-background px-3 py-2 text-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary`} 
                 />
                 {errors.phone && <p className="mt-1 text-sm text-red-500">{errors.phone}</p>}
@@ -191,6 +190,8 @@ const Contact = () => {
                   value={formData.message}
                   onChange={handleChange}
                   rows={4} 
+                  aria-required="true"
+                  placeholder="Type your message here..."
                   className={`mt-1 block w-full rounded-md border ${errors.message ? 'border-red-500' : 'border-foreground/20'} bg-background px-3 py-2 text-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary`}
                 />
                 {errors.message && <p className="mt-1 text-sm text-red-500">{errors.message}</p>}
@@ -206,6 +207,20 @@ const Contact = () => {
                 </button>
               </div>
             </form>
+          </div>
+          <div className="mt-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-2xl font-bold mb-4 text-center text-foreground">Find Us On Maps</h2>
+            <iframe
+              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3502.123456789!2d77.035029!3d28.4226457!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x390d18758a92a4b5%3A0x34ae74e508e6d8a7!2sBrenstone%20International!5e0!3m2!1sen!2sin!4vXXXXXXXXXXXX"
+              width="100%"
+              height="400"
+              style={{ border: 0 }}
+              allowFullScreen
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              aria-hidden="false"
+              tabIndex={0}
+            ></iframe>
           </div>
         </div>
       </div>
