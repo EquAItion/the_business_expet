@@ -100,6 +100,8 @@ router.post('/login/expert', async (req, res) => {
         connection = await pool.getConnection();
         const { email, password } = req.body;
 
+        console.log('Login attempt for:', email);
+
         // Validate input
         if (!email || !password) {
             return res.status(400).json({
@@ -115,13 +117,15 @@ router.post('/login/expert', async (req, res) => {
                 u.name, 
                 u.email, 
                 u.password, 
-                u.role
+                u.role,
+                u.industry
             FROM users u
             WHERE u.email = ? AND u.role = 'expert'`,
             [email]
         );
 
         if (users.length === 0) {
+            console.log('No expert found with email:', email);
             return res.status(401).json({
                 success: false,
                 message: 'Invalid expert credentials'
@@ -132,11 +136,14 @@ router.post('/login/expert', async (req, res) => {
         const isValidPassword = await bcrypt.compare(password, user.password);
 
         if (!isValidPassword) {
+            console.log('Invalid password for user:', email);
             return res.status(401).json({
                 success: false,
                 message: 'Invalid expert credentials'
             });
         }
+
+        console.log('Login successful for:', email);
 
         const token = jwt.sign(
             { user_id: user.user_id, role: user.role },

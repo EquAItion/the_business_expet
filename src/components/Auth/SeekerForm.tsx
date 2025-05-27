@@ -5,6 +5,7 @@ import Navbar from '../layout/Navbar';
 import './auth.css'
 import { toast } from 'sonner';
 import Footer from '../layout/Footer';
+import { API_BASE_URL } from '@/config/api';
 
 const SocialIcons = () => (
     <div className="social-container">
@@ -220,9 +221,10 @@ const SeekerForm: React.FC = () => {
             return;
         }
         
-        const API_BASE_URL = import.meta.env.VITE_API_URL;
-
         try {
+            console.log('Attempting login with:', { email: signInData.email });
+            console.log('Using API URL:', API_BASE_URL);
+            
             const response = await fetch(`${API_BASE_URL}/api/auth/login/seeker`, {
                 method: 'POST',
                 headers: {
@@ -408,3 +410,4 @@ const SeekerForm: React.FC = () => {
 };
 
 export default SeekerForm;
+

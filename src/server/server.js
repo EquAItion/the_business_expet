@@ -1,12 +1,56 @@
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
-require('dotenv').config();
+const dotenv = require('dotenv');
+const notificationsRouter = require('./routes/notifications');
+const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
+
+if (process.env.NODE_ENV === 'production') {
+  dotenv.config({ path: '.env.production' });
+} else {
+  dotenv.config();
+}  
+
+
+
 const app = express();
 
+console.log('JWT_SECRET environment variable:', process.env.JWT_SECRET);
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if(!origin) return callback(null, true);
+    
+    // List of allowed origins
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://localhost:3000',
+      'https://localhost:5173',
+      'http://192.168.1.8:5173',
+      'https://expertisestation.com'
+    ];
+    
+    if(allowedOrigins.indexOf(origin) === -1){
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    
+    return callback(null, true);
+  },
+  credentials: true
+}));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Add a simple test endpoint
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'Server is working!' });
+});
+
+
 
 // Database connection pool
 const pool = mysql.createPool({
@@ -68,9 +112,18 @@ const testConnection = async () => {
         `);
 
         // Make sure the users table has a profile_completed column
-        await connection.query(`
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_completed BOOLEAN DEFAULT FALSE
+        const [rows] = await connection.query(`
+            SELECT COLUMN_NAME 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() 
+            AND TABLE_NAME = 'users' 
+            AND COLUMN_NAME = 'profile_completed'
         `);
+        if (rows.length === 0) {
+            await connection.query(`
+                ALTER TABLE users ADD COLUMN profile_completed BOOLEAN DEFAULT FALSE
+            `);
+        }
 
         connection.release();
     } catch (error) {
@@ -89,17 +142,26 @@ module.exports = { pool };
 app.locals.db = pool;
 
 // Routes
+// Existing route registrations
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/experts', require('./routes/experts'));
 app.use('/api/webinar', require('./routes/webinar'));
 app.use('/api/business-plans', require('./routes/businessPlans'));
+app.use('/api/sessions', require('./routes/sessions'));
+app.use('/api/notifications', notificationsRouter);
 
 const profilesRouter = require('./routes/profiles');
 const expertAvailabilityRoutes = require('./routes/ExpertAvailability');
+const bookingsRouter = require('./routes/bookings');
+const agoraTokenRouter = require('./routes/agora');
+const usersRouter = require('./routes/users');
 
 // Pass the database connection to the routes
 app.use('/api/profiles', profilesRouter);
 app.use('/api/experts', expertAvailabilityRoutes);
+app.use('/api/bookings', bookingsRouter);
+app.use('/api/agora', agoraTokenRouter);
+app.use('/api/users', usersRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -115,3 +177,10 @@ const PORT = process.env.PORT || 8081;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
+
+
+
+
+
+
+

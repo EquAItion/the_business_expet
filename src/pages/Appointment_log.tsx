@@ -40,7 +40,7 @@ interface Booking {
   end_time: string;
   session_type: 'video' | 'audio' | 'chat';
   status: 'pending' | 'confirmed' | 'rejected' | 'completed' | 'cancelled';
-  amount: number | string; // Updated to handle both number and string
+  amount: number | string;
   created_at: string;
   notes?: string;
 }
@@ -51,9 +51,9 @@ interface UserProfile {
   last_name: string;
   email?: string;
   profile_image?: string;
-  specialty?: string; // For experts
-  designation?: string; // For experts
-  company?: string; // For seekers
+  specialty?: string;
+  designation?: string;
+  company?: string;
   role?: string;
   bio?: string;
   industry?: string;
@@ -75,6 +75,12 @@ const AppointmentLog = () => {
   const [errorExpert, setErrorExpert] = useState<string | null>(null);
   const [uniqueContacts, setUniqueContacts] = useState<UserProfile[]>([]);
   const navigate = useNavigate();
+
+  // Reschedule dialog states
+  const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
+  const [rescheduleBookingId, setRescheduleBookingId] = useState('');
+  const [rescheduleDate, setRescheduleDate] = useState<Date | undefined>(new Date());
+  const [rescheduleTime, setRescheduleTime] = useState('');
 
   // Get initials for avatar fallback
   const getInitials = (name: string) => {
@@ -158,7 +164,7 @@ const AppointmentLog = () => {
     return bookings.filter(booking => {
       const bookingDate = new Date(booking.date + 'T' + booking.end_time.replace(/\s?[AP]M/, ''));
       const now = new Date();
-      return bookingDate > now && 
+      return bookingDate >= now && 
              (booking.status === 'confirmed' || booking.status === 'pending');
     }).length;
   };
@@ -176,59 +182,83 @@ const AppointmentLog = () => {
     }).length;
   };
 
-  // Fetch bookings for seeker - completely rewritten for reliability
+  // Fetch bookings for seeker
   const fetchSeekerBookings = async (id: string) => {
     setLoadingSeeker(true);
     setErrorSeeker(null);
     
     try {
-      console.log(`Fetching seeker bookings for user ID: ${id}`);
+      const userData = localStorage.getItem('user');
+      let token = '';
       
-      const token = localStorage.getItem('token') || 
-                   (JSON.parse(localStorage.getItem('user') || '{}').token) || 
-                   '';
+      if (userData) {
+        const user = JSON.parse(userData);
+        token = user.token || user.accessToken || '';
+      }
       
-      const response = await fetch(`http://localhost:8081/api/bookings/seeker/${id}`, {
+      if (!token) {
+        token = localStorage.getItem('token') || '';
+      }
+      
+      console.log(`Fetching seeker bookings for user ID: ${id} with token: ${token ? 'present' : 'missing'}`);
+      
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/seeker/${id}`, {
+        method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       });
       
-      const responseText = await response.text();
-      console.log(`Raw seeker bookings response: ${responseText}`);
+      if (!response.ok) {
+        setSeekerBookings([]);
+        setErrorSeeker(`Failed to fetch seeker bookings: ${response.statusText}`);
+        console.error(`Failed to fetch seeker bookings: ${response.statusText}`);
+        return;
+      }
       
+      const responseText = await response.text();
       let data;
       try {
         data = JSON.parse(responseText);
       } catch (e) {
-        console.error("Failed to parse JSON response:", e);
         setErrorSeeker("Invalid response from server");
         setSeekerBookings([]);
+        console.error("Invalid JSON response from server:", responseText);
         return;
       }
       
-      console.log("Parsed seeker bookings data:", data);
-      
       if (data && data.success && Array.isArray(data.data)) {
-        // Ensure all bookings have the required fields
         const processedBookings = data.data.map((booking: any) => ({
-          ...booking,
-          expert_name: booking.expert_name || 'Expert',
-          seeker_name: booking.seeker_name || 'Seeker',
-          date: booking.date || booking.appointment_date,
-          id: booking.id || `temp-${Math.random()}`
+          id: booking.id || `temp-${Math.random()}`,
+          expert_id: booking.expert_id || '',
+          seeker_id: booking.seeker_id || id,
+          expert_name: booking.expert_name || 'Unknown Expert',
+          seeker_name: booking.seeker_name || 'You',
+          date: booking.date || booking.appointment_date || '',
+          start_time: booking.start_time || '',
+          end_time: booking.end_time || '',
+          session_type: booking.session_type || 'video',
+          status: booking.status || 'pending',
+          amount: booking.amount || 0,
+          created_at: booking.created_at || new Date().toISOString(),
+          notes: booking.notes || ''
         }));
         
         console.log("Processed seeker bookings:", processedBookings);
         setSeekerBookings(processedBookings);
+        setErrorSeeker(null);
       } else {
-        console.warn("Invalid or empty seeker bookings data:", data);
         setSeekerBookings([]);
+        if (!data.success) {
+          setErrorSeeker(data.message || "Failed to load bookings");
+          console.error("Backend returned unsuccessful response:", data);
+        }
       }
     } catch (error) {
-      console.error("Error fetching seeker bookings:", error);
-      setErrorSeeker("Failed to load your bookings");
+      setErrorSeeker("Failed to load your bookings. Please try again.");
       setSeekerBookings([]);
+      console.error("Error fetching seeker bookings:", error);
     } finally {
       setLoadingSeeker(false);
     }
@@ -238,210 +268,253 @@ const AppointmentLog = () => {
   const fetchExpertBookings = async (id: string) => {
     setLoadingExpert(true);
     setErrorExpert(null);
+    
     try {
-      // Use a try-catch to prevent fetch errors from breaking the app
-      try {
-        const response = await fetch(`http://localhost:8081/api/bookings/expert/${id}`);
-        
-        if (!response.ok) {
-          console.warn(`Failed to fetch expert bookings: ${response.status}`);
-          setExpertBookings([]);
-          return;
-        }
-        
-        const data = await response.json();
-        console.log("Expert bookings data:", data);
-        
-        if (data && data.data) {
-          setExpertBookings(data.data);
-        } else if (data && Array.isArray(data)) {
-          // Handle case where API returns array directly
-          setExpertBookings(data);
-        } else {
-          console.warn('Invalid response format for expert bookings');
-          setExpertBookings([]);
-        }
-      } catch (error) {
-        console.error('Error fetching expert bookings:', error);
-        setExpertBookings([]);
+      const userData = localStorage.getItem('user');
+      let token = '';
+      
+      if (userData) {
+        const user = JSON.parse(userData);
+        token = user.token || user.accessToken || '';
       }
+      
+      if (!token) {
+        token = localStorage.getItem('token') || '';
+      }
+      
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/expert/${id}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        setExpertBookings([]);
+        setErrorExpert(`Failed to fetch expert bookings: ${response.statusText}`);
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (data && data.success && Array.isArray(data.data)) {
+        const processedBookings = data.data.map((booking: any) => ({
+          id: booking.id || `temp-${Math.random()}`,
+          expert_id: booking.expert_id || id,
+          seeker_id: booking.seeker_id || '',
+          expert_name: booking.expert_name || 'You',
+          seeker_name: booking.seeker_name || 'Unknown Seeker',
+          date: booking.date || booking.appointment_date || '',
+          start_time: booking.start_time || '',
+          end_time: booking.end_time || '',
+          session_type: booking.session_type || 'video',
+          status: booking.status || 'pending',
+          amount: booking.amount || 0,
+          created_at: booking.created_at || new Date().toISOString(),
+          notes: booking.notes || ''
+        }));
+        
+        setExpertBookings(processedBookings);
+        setErrorExpert(null);
+      } else {
+        setExpertBookings([]);
+        if (data && !data.success) {
+          setErrorExpert(data.message || "Failed to load bookings");
+        }
+      }
+    } catch (error) {
+      setErrorExpert("Failed to load your bookings. Please try again.");
+      setExpertBookings([]);
     } finally {
       setLoadingExpert(false);
     }
   };
 
-  // Improve the authentication check to properly detect logged in users
+  // Helper function to decode JWT token payload
+  const decodeJwtPayload = (token: string): any | null => {
+    try {
+      const payloadBase64 = token.split('.')[1];
+      const payloadJson = atob(payloadBase64);
+      return JSON.parse(payloadJson);
+    } catch (error) {
+      console.error('Failed to decode JWT token payload:', error);
+      return null;
+    }
+  };
+
+  // Check authentication and set user info
   useEffect(() => {
     const checkAuth = () => {
       try {
-        const userData = localStorage.getItem('user');
-        console.log("User data from localStorage:", userData);
+        const userDataRaw = localStorage.getItem('user') || '{}';
+        console.log("User data from localStorage:", userDataRaw);
+        let userId = null;
+        let userRole = null;
+        try {
+          const user = JSON.parse(userDataRaw);
+          console.log("Parsed user object:", user);
+          const hasToken = user.token || user.accessToken;
+          userId = user.user_id || user.id;
+          if (!userId && hasToken) {
+            const token = user.token || user.accessToken;
+            const payloadBase64 = token.split('.')[1];
+            const payloadJson = atob(payloadBase64);
+            const payload = JSON.parse(payloadJson);
+            userId = payload.user_id || payload.id || null;
+          }
+          userRole = (user.role || '').toLowerCase();
+          console.log(`UserId: ${userId}, UserRole: ${userRole}, HasToken: ${!!hasToken}`);
+        } catch (e) {
+          console.error("Error parsing user data or token:", e);
+        }
         
-        if (userData) {
-          const user = JSON.parse(userData);
-          
-          // Check for all possible ID fields
-          const userId = user.user_id || user.id;
-          
-          // If we have a token, consider the user logged in even without ID
-          if (user.token || user.accessToken) {
-            // Set a default ID if none is found
-            setUserId(userId || 'default-user-id');
-            
-            // Determine user type
-            const role = (user.role || '').toLowerCase();
-            setUserType(role.includes('expert') ? 'expert' : 'seeker');
-            
-            console.log("User authenticated with token, userId:", userId, "userType:", userType);
-            
-            // Immediately fetch data
-            if (userId) {
-              fetchSeekerBookings(userId);
-              fetchExpertBookings(userId);
-            }
+        if (userId) {
+          setUserId(userId);
+          if (userRole && userRole.includes('expert')) {
+            setUserType('expert');
+          } else if (userRole && (userRole.includes('seeker') || userRole.includes('client'))) {
+            setUserType('seeker');
           } else {
-            console.log("No token found in user data");
-            setUserId(null);
+            setUserType('seeker');
           }
         } else {
-          console.log("No user data found in localStorage");
           setUserId(null);
+          setUserType(null);
         }
       } catch (e) {
         console.error("Error parsing user data:", e);
         setUserId(null);
+        setUserType(null);
       }
     };
+
 
     checkAuth();
   }, []);
 
-  // Fetch bookings when userType and userId are set
+  // Fetch bookings when userId changes
   useEffect(() => {
     if (!userId) return;
-    
-    // Always fetch both types of bookings regardless of user type
     fetchSeekerBookings(userId);
     fetchExpertBookings(userId);
   }, [userId]);
 
-  // Generate unique contacts list based on bookings
+  // Generate unique contacts list
   useEffect(() => {
     const contactsMap = new Map<string, UserProfile>();
 
-    if (userType === 'seeker') {
-      expertBookings.forEach(booking => {
-        if (!contactsMap.has(booking.expert_id)) {
-          contactsMap.set(booking.expert_id, {
-            id: booking.expert_id,
-            first_name: booking.expert_name ? booking.expert_name.split(' ')[0] : '',
-            last_name: booking.expert_name ? booking.expert_name.split(' ').slice(1).join(' ') : '',
-            email: '',
-            role: 'expert',
-          });
-        }
-      });
-    } else if (userType === 'expert') {
-      seekerBookings.forEach(booking => {
-        if (!contactsMap.has(booking.seeker_id)) {
-          contactsMap.set(booking.seeker_id, {
-            id: booking.seeker_id,
-            first_name: booking.seeker_name ? booking.seeker_name.split(' ')[0] : '',
-            last_name: booking.seeker_name ? booking.seeker_name.split(' ').slice(1).join(' ') : '',
-            email: '',
-            role: 'seeker',
-          });
-        }
-      });
-    }
+    seekerBookings.forEach(booking => {
+      if (booking.expert_id && !contactsMap.has(booking.expert_id)) {
+        const nameParts = booking.expert_name ? booking.expert_name.split(' ') : ['Expert'];
+        contactsMap.set(booking.expert_id, {
+          id: booking.expert_id,
+          first_name: nameParts[0] || 'Expert',
+          last_name: nameParts.slice(1).join(' ') || '',
+          email: '',
+          role: 'expert',
+          specialty: 'Expert'
+        });
+      }
+    });
+
+    expertBookings.forEach(booking => {
+      if (booking.seeker_id && !contactsMap.has(booking.seeker_id)) {
+        const nameParts = booking.seeker_name ? booking.seeker_name.split(' ') : ['Client'];
+        contactsMap.set(booking.seeker_id, {
+          id: booking.seeker_id,
+          first_name: nameParts[0] || 'Client',
+          last_name: nameParts.slice(1).join(' ') || '',
+          email: '',
+          role: 'seeker',
+          company: 'Client'
+        });
+      }
+    });
 
     setUniqueContacts(Array.from(contactsMap.values()));
-  }, [userType, seekerBookings, expertBookings]);
+  }, [seekerBookings, expertBookings]);
 
-  // Loading and error state combined
+  // Loading and error state
   const loading = loadingSeeker || loadingExpert;
   const error = errorSeeker || errorExpert;
 
   // Bookings to display based on userType
   const bookings = userType === 'seeker' ? seekerBookings : expertBookings;
 
-  // Handle accepting a booking (for experts only)
+  // Handle accepting a booking (experts only)
   const handleAcceptBooking = async (bookingId: string) => {
     try {
-      console.log(`Accepting booking: ${bookingId}`);
-      const response = await fetch(`http://localhost:8081/api/bookings/${bookingId}/status`, {
+      const userData = localStorage.getItem('user');
+      let token = '';
+      if (userData) {
+        const user = JSON.parse(userData);
+        token = user.token || user.accessToken || '';
+      }
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/${bookingId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ status: 'confirmed' })
       });
-      
-      console.log("Accept booking response status:", response.status);
-      
-      if (!response.ok) throw new Error('Failed to accept booking');
-      
-      // Update local state
-      setExpertBookings(prev => 
-        prev.map(booking => booking.id === bookingId 
-          ? {...booking, status: 'confirmed'} 
-          : booking
-        )
-      );
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to accept booking');
+      }
+      setExpertBookings(prev => prev.map(booking => booking.id === bookingId ? {...booking, status: 'confirmed'} : booking));
+      setSeekerBookings(prev => prev.map(booking => booking.id === bookingId ? {...booking, status: 'confirmed'} : booking));
       toast({
         title: "Booking accepted",
         description: "The client has been notified",
       });
     } catch (error: any) {
-      console.error("Error accepting booking:", error);
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to accept booking",
         variant: "destructive",
       });
     }
   };
 
-  // Handle rejecting a booking (for experts only)
+  // Handle rejecting a booking (experts only)
   const handleRejectBooking = async (bookingId: string) => {
     try {
-      console.log(`Rejecting booking: ${bookingId}`);
-      const response = await fetch(`http://localhost:8081/api/bookings/${bookingId}/status`, {
+      const userData = localStorage.getItem('user');
+      let token = '';
+      if (userData) {
+        const user = JSON.parse(userData);
+        token = user.token || user.accessToken || '';
+      }
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/${bookingId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ status: 'rejected' })
       });
-      
-      console.log("Reject booking response status:", response.status);
-      
-      if (!response.ok) throw new Error('Failed to reject booking');
-      
-      // Update local state
-      setExpertBookings(prev => 
-        prev.map(booking => booking.id === bookingId 
-          ? {...booking, status: 'rejected'} 
-          : booking
-        )
-      );
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to reject booking');
+      }
+      setExpertBookings(prev => prev.map(booking => booking.id === bookingId ? {...booking, status: 'rejected'} : booking));
+      setSeekerBookings(prev => prev.map(booking => booking.id === bookingId ? {...booking, status: 'rejected'} : booking));
       toast({
         title: "Booking rejected",
         description: "The client has been notified",
       });
     } catch (error: any) {
-      console.error("Error rejecting booking:", error);
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to reject booking",
         variant: "destructive",
       });
     }
   };
 
-  // Add these state variables and functions for the reschedule feature
-  const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
-  const [rescheduleBookingId, setRescheduleBookingId] = useState('');
-  const [rescheduleDate, setRescheduleDate] = useState<Date | undefined>(new Date());
-  const [rescheduleTime, setRescheduleTime] = useState('');
-
-  // Function to open the reschedule dialog
+  // Open reschedule dialog
   const openRescheduleDialog = (bookingId: string, currentDate: string) => {
     setRescheduleBookingId(bookingId);
     setRescheduleDate(new Date(currentDate));
@@ -449,10 +522,9 @@ const AppointmentLog = () => {
     setIsRescheduleOpen(true);
   };
 
-  // Function to handle reschedule submission
+  // Handle reschedule submission
   const handleRescheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!rescheduleDate || !rescheduleTime) {
       toast({
         title: "Error",
@@ -461,44 +533,50 @@ const AppointmentLog = () => {
       });
       return;
     }
-    
     try {
       const formattedDate = rescheduleDate.toISOString().split('T')[0];
-      
-      const response = await fetch(`http://localhost:8081/api/bookings/${rescheduleBookingId}/reschedule`, {
+      const userData = localStorage.getItem('user');
+      let token = '';
+      if (userData) {
+        const user = JSON.parse(userData);
+        token = user.token || user.accessToken || '';
+      }
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/${rescheduleBookingId}/reschedule`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ 
           date: formattedDate,
           start_time: rescheduleTime 
         })
       });
-      
-      if (!response.ok) throw new Error('Failed to reschedule booking');
-      
-      // Update local state
-      setExpertBookings(prev => 
-        prev.map(booking => booking.id === rescheduleBookingId 
-          ? {...booking, date: formattedDate, start_time: rescheduleTime} 
-          : booking
-        )
-      );
-      
+      const responseData = await response.json();
+      if (!response.ok) {
+        throw new Error(responseData.message || 'Failed to reschedule booking');
+      }
+      const updateBooking = (booking: Booking): Booking => 
+        booking.id === rescheduleBookingId 
+          ? {...booking, date: formattedDate, start_time: rescheduleTime, status: 'confirmed'} 
+          : booking;
+      setExpertBookings(prev => prev.map(updateBooking));
+      setSeekerBookings(prev => prev.map(updateBooking));
       setIsRescheduleOpen(false);
       toast({
         title: "Booking rescheduled",
-        description: "The client has been notified of the new time",
+        description: "The appointment has been rescheduled successfully",
       });
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to reschedule booking",
         variant: "destructive",
       });
     }
   };
 
-  // Add a helper function to format amount
+  // Format amount helper
   const formatAmount = (amount: number | string): string => {
     if (typeof amount === 'string') {
       return parseFloat(amount).toFixed(2);
@@ -506,7 +584,7 @@ const AppointmentLog = () => {
     return amount.toFixed(2);
   };
 
-  // Add a helper function to check if amount is positive
+  // Check if amount is positive
   const isAmountPositive = (amount: number | string): boolean => {
     if (typeof amount === 'string') {
       return parseFloat(amount) > 0;
@@ -514,392 +592,333 @@ const AppointmentLog = () => {
     return amount > 0;
   };
 
-  // Add this function at the top of your component
-  const getStatusVariant = (status: string) => {
-    switch (status) {
-      case 'confirmed':
-        return 'outline';
-      case 'pending':
-        return 'warning';
-      case 'rejected':
-      case 'cancelled':
-        return 'destructive';
-      case 'completed':
-        return 'default';
-      default:
-        return 'secondary';
-    }
+  // Helper to check if current time is within 5 minutes before session start
+  const isWithinFiveMinutesBeforeStart = (dateStr: string, startTimeStr: string): boolean => {
+    const now = new Date();
+    const sessionStart = new Date(`${dateStr}T${startTimeStr}`);
+    const fiveMinutesBefore = new Date(sessionStart.getTime() - 5 * 60 * 1000);
+    return now >= fiveMinutesBefore && now <= sessionStart;
   };
 
-  // Ensure we're fetching and displaying user profiles correctly
-  useEffect(() => {
-    // Fetch user profiles for all contacts in bookings
-    const fetchUserProfiles = async () => {
-      const bookings = [...seekerBookings, ...expertBookings];
-      if (bookings.length === 0) return;
-      
-      // Get unique user IDs
-      const expertIds = new Set(seekerBookings.map(b => b.expert_id));
-      const seekerIds = new Set(expertBookings.map(b => b.seeker_id));
-      const uniqueIds = [...Array.from(expertIds), ...Array.from(seekerIds)];
-      
-      if (uniqueIds.length === 0) return;
-      
-      console.log("Fetching profiles for IDs:", uniqueIds);
-      
-      try {
-        const profiles: UserProfile[] = [];
-        
-        // Fetch each profile
-        for (const id of uniqueIds) {
-          try {
-            // Try user profile endpoint first (more generic)
-            const userResponse = await fetch(`http://localhost:8081/api/users/${id}`);
-            if (userResponse.ok) {
-              const data = await userResponse.json();
-              if (data.success && data.data) {
-                profiles.push({
-                  id: id,
-                  first_name: data.data.first_name || data.data.name?.split(' ')[0] || '',
-                  last_name: data.data.last_name || data.data.name?.split(' ').slice(1).join(' ') || '',
-                  email: data.data.email || '',
-                  profile_image: data.data.profile_image || '',
-                  role: data.data.role || 'unknown'
-                });
-                continue;
-              }
-            }
-            
-            // If user profile fails, create a basic profile from booking data
-            const relevantSeekerBooking = seekerBookings.find(b => b.expert_id === id);
-            const relevantExpertBooking = expertBookings.find(b => b.seeker_id === id);
-            
-            if (relevantSeekerBooking) {
-              // This is an expert
-              const nameParts = relevantSeekerBooking.expert_name?.split(' ') || ['', ''];
-              profiles.push({
-                id: id,
-                first_name: nameParts[0] || '',
-                last_name: nameParts.slice(1).join(' ') || '',
-                email: '',
-                role: 'expert'
-              });
-            } else if (relevantExpertBooking) {
-              // This is a seeker
-              const nameParts = relevantExpertBooking.seeker_name?.split(' ') || ['', ''];
-              profiles.push({
-                id: id,
-                first_name: nameParts[0] || '',
-                last_name: nameParts.slice(1).join(' ') || '',
-                email: '',
-                role: 'seeker'
-              });
-            }
-          } catch (error) {
-            console.error(`Error fetching profile for ID ${id}:`, error);
-          }
-        }
-        
-        console.log("Fetched profiles:", profiles);
-        setUniqueContacts(profiles);
-      } catch (error) {
-        console.error("Error fetching user profiles:", error);
-      }
-    };
+  // Helper to check if session is completed (current time after session end)
+  const isSessionCompleted = (dateStr: string, endTimeStr: string): boolean => {
+    const now = new Date();
+    const sessionEnd = new Date(`${dateStr}T${endTimeStr}`);
+    return now > sessionEnd;
+  };
 
-    if (userId && (seekerBookings.length > 0 || expertBookings.length > 0)) {
-      fetchUserProfiles();
-    }
-  }, [seekerBookings, expertBookings, userId]);
+  // Render booking card helper
+  const renderBookingCard = (booking: Booking) => {
+    // Determine if the user is viewing as a seeker or expert
+    const isViewingAsSeeker = userType === 'seeker';
 
-  // Add this to the component to show sample data if no bookings are found
-  useEffect(() => {
-    // If we have a user but no bookings after loading, show sample data
-    if (!loading && !error && bookings.length === 0 && localStorage.getItem('user')) {
-      // Sample data for demonstration
-      const sampleBookings = [
-        {
-          id: 'sample-1',
-          expert_id: 'expert-1',
-          seeker_id: 'seeker-1',
-          date: new Date().toISOString().split('T')[0], // Today
-          start_time: '10:00 AM',
-          end_time: '11:00 AM',
-          session_type: 'video',
-          status: 'confirmed',
-          amount: 100,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: 'sample-2',
-          expert_id: 'expert-2',
-          seeker_id: 'seeker-1',
-          date: new Date(Date.now() + 86400000).toISOString().split('T')[0], // Tomorrow
-          start_time: '2:00 PM',
-          end_time: '3:00 PM',
-          session_type: 'audio',
-          status: 'pending',
-          amount: 75,
-          created_at: new Date().toISOString()
-        }
-      ];
-      
-      if (userType === 'seeker') {
-        setSeekerBookings(sampleBookings);
-      } else {
-        setExpertBookings(sampleBookings);
-      }
-      
-      // Add sample contacts
-      setUniqueContacts([
-        {
-          id: 'expert-1',
-          first_name: 'John',
-          last_name: 'Doe',
-          specialty: 'Business Consultant',
-          profile_image: ''
-        },
-        {
-          id: 'expert-2',
-          first_name: 'Jane',
-          last_name: 'Smith',
-          specialty: 'Marketing Expert',
-          profile_image: ''
-        }
-      ]);
-    }
-  }, [loading, error, bookings.length, userType]);
+    // Get the other user's name based on the user type
+    const otherUserName = isViewingAsSeeker ? booking.expert_name : booking.seeker_name;
+
+    // Find the other user's profile from uniqueContacts
+    const otherUser = uniqueContacts.find(contact =>
+      isViewingAsSeeker ? contact.id === booking.expert_id : contact.id === booking.seeker_id
+    );
+
+    const sessionCompleted = isSessionCompleted(booking.date, booking.end_time);
+    const canJoinSession = !sessionCompleted && (isWithinFiveMinutesBeforeStart(booking.date, booking.start_time) || new Date() >= new Date(`${booking.date}T${booking.start_time}`));
+
+    return (
+      <Card key={booking.id} className="overflow-hidden hover:shadow-md transition-shadow">
+        <CardHeader className="pb-2">
+          <div className="flex justify-between items-start">
+            <div className="flex items-center space-x-3">
+              <Avatar className="h-10 w-10">
+                <AvatarImage src={otherUser?.profile_image} />
+                <AvatarFallback className="bg-primary/10">
+                  {getInitials(otherUserName || '')}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <CardTitle className="text-lg font-semibold">
+                  {otherUserName || `${otherUser?.first_name || ''} ${otherUser?.last_name || ''}`}
+                </CardTitle>
+                <CardDescription className="text-sm">
+                  {isViewingAsSeeker
+                    ? (otherUser?.specialty || 'Expert')
+                    : (otherUser?.company || 'Client')}
+                </CardDescription>
+              </div>
+            </div>
+            {getStatusBadge(booking.status)}
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-3">
+          <div className="flex items-center text-sm text-muted-foreground">
+            <CalendarIcon className="h-4 w-4 mr-2" />
+            <span className="font-medium">{formatDate(booking.date)}</span>
+            {new Date(booking.date) > new Date() && (
+              <Badge variant="outline" className="ml-2 bg-blue-50 text-blue-700 text-xs">
+                {getTimeUntil(booking.date)}
+              </Badge>
+            )}
+          </div>
+
+          <div className="flex items-center text-sm text-muted-foreground">
+            <Clock className="h-4 w-4 mr-2" />
+            <span>{booking.start_time} - {booking.end_time}</span>
+          </div>
+
+          <div className="flex items-center text-sm text-muted-foreground">
+            <div className="flex items-center mr-2">
+              {getSessionTypeIcon(booking.session_type)}
+            </div>
+            <span className="capitalize">{booking.session_type} Session</span>
+          </div>
+
+          {isAmountPositive(booking.amount) && (
+            <div className="text-sm font-semibold text-green-700">
+              Amount: ${formatAmount(booking.amount)}
+            </div>
+          )}
+
+          {booking.notes && (
+            <div className="text-sm mt-2 pt-2 border-t border-gray-100">
+              <p className="text-muted-foreground mb-1 font-medium">Notes:</p>
+              <p className="text-gray-700">{booking.notes}</p>
+            </div>
+          )}
+        </CardContent>
+
+        <CardFooter className="pt-2 border-t bg-gray-50/50">
+          {userType === 'seeker' ? (
+            <div className="w-full space-y-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full"
+                onClick={() => navigate(`/experts/${booking.expert_id}`)}
+              >
+                <User className="h-4 w-4 mr-2" />
+                View Expert Profile
+              </Button>
+              {booking.status === 'confirmed' && (
+                <Button
+                  size="sm"
+                  className="w-full"
+                  onClick={async () => {
+                    try {
+                      await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                      navigate(`/session/${booking.id}`);
+                    } catch (err) {
+                      toast({
+                        title: "Permission Denied",
+                        description: "Please allow camera and microphone access to join the session.",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  <Video className="h-4 w-4 mr-2" />
+                  Join Session
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="w-full space-y-2">
+              {booking.status === 'pending' && (
+                <div className="flex space-x-2">
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => handleAcceptBooking(booking.id)}
+                  >
+                    <Check className="h-4 w-4 mr-1" />
+                    Accept
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => handleRejectBooking(booking.id)}
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    Decline
+                  </Button>
+                </div>
+              )}
+              {(booking.status === 'confirmed' || booking.status === 'pending') && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => openRescheduleDialog(booking.id, booking.date)}
+                >
+                  <CalendarClock className="h-4 w-4 mr-1" />
+                  Reschedule
+                </Button>
+              )}
+              {booking.status === 'confirmed' && (
+                <Button
+                  size="sm"
+                  className="w-full mt-2"
+                  onClick={async () => {
+                    try {
+                      await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                      navigate(`/video-call/${booking.id}`);
+                    } catch (err) {
+                      toast({
+                        title: "Permission Denied",
+                        description: "Please allow camera and microphone access to start the session.",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  <Video className="h-4 w-4 mr-2" />
+                  Start Session
+                </Button>
+              )}
+            </div>
+          )}
+        </CardFooter>
+      </Card>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <div className="container mx-auto py-8 px-4 pt-20">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">Appointment Log</h1>
+      <div className="container mx-auto py-8 px-4 pt-20 sm:px-2">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Appointment Log</h1>
+            <p className="text-muted-foreground mt-1 max-w-xs sm:max-w-full">
+              Manage your {userType === 'seeker' ? 'bookings with experts' : 'client appointments'}
+            </p>
+          </div>
           {userType && (
-            <Badge variant="outline" className="text-sm">
-              Viewing as {userType === 'seeker' ? 'Client' : 'Expert'}
+            <Badge variant="outline" className="text-sm px-3 py-1 whitespace-nowrap">
+              {userType === 'seeker' ? 'Client View' : 'Expert View'}
             </Badge>
           )}
         </div>
         
-        {/* Check if user data exists in localStorage instead of just userId */}
         {!localStorage.getItem('user') ? (
-          <Card>
-            <CardContent className="pt-6 pb-6 text-center">
-              <p className="text-muted-foreground mb-4">Please log in to view your appointments.</p>
-              <Button onClick={() => navigate('/login')}>
-                Log In
-              </Button>
+          <Card className="text-center py-12">
+            <CardContent>
+              <div className="space-y-4">
+                <div className="text-muted-foreground text-lg">
+                  Please log in to view your appointments
+                </div>
+                <Button onClick={() => navigate('/login')} size="lg">
+                  Log In
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : loading ? (
-          <div className="flex flex-col items-center justify-center py-12">
+          <div className="flex flex-col items-center justify-center py-20">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
             <p className="text-muted-foreground">Loading appointments...</p>
           </div>
         ) : error ? (
-          <div className="text-center py-10">
-            <div className="text-red-500 mb-4">{error}</div>
-            <Button onClick={() => {
-              const userData = localStorage.getItem('user');
-              if (userData) {
-                const user = JSON.parse(userData);
-                const userId = user.user_id || user.id || 'default-user-id';
-                fetchSeekerBookings(userId);
-                fetchExpertBookings(userId);
-              }
-            }}>
-              Retry
-            </Button>
-          </div>
+          <Card className="text-center py-12">
+            <CardContent>
+              <div className="space-y-4">
+                <div className="text-red-500 text-lg">{error}</div>
+                <Button onClick={() => {
+                  if (userId) {
+                    fetchSeekerBookings(userId);
+                    fetchExpertBookings(userId);
+                  }
+                }} variant="outline">
+                  Try Again
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         ) : (
-          <Tabs defaultValue="upcoming">
-            <TabsList className="mb-4">
-              <TabsTrigger value="upcoming">
+          <Tabs defaultValue="upcoming" className="space-y-6">
+            <TabsList
+              className={
+                userType === 'seeker'
+                  ? "grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3"
+                  : "grid w-full grid-cols-4 lg:w-auto lg:grid-cols-4"
+              }
+            >
+              <TabsTrigger value="upcoming" className="flex items-center gap-2">
                 Upcoming
-                {bookings.length > 0 && (
-                  <Badge variant="secondary" className="ml-2">{getUpcomingCount()}</Badge>
+                {getUpcomingCount() > 0 && (
+                  <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                    {getUpcomingCount()}
+                  </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="past">
+              <TabsTrigger value="past" className="flex items-center gap-2">
                 Past
-                {bookings.length > 0 && (
-                  <Badge variant="secondary" className="ml-2">{getPastCount()}</Badge>
+                {getPastCount() > 0 && (
+                  <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                    {getPastCount()}
+                  </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="contacts">
-                {userType === 'seeker' ? 'My Experts' : 'My Clients'}
-                {uniqueContacts.length > 0 && (
-                  <Badge variant="secondary" className="ml-2">{uniqueContacts.length}</Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="all">
-                All Appointments
+              {/* Only show contacts tab for expert */}
+              {userType === 'expert' && (
+                <TabsTrigger value="contacts" className="flex items-center gap-2">
+                  My Clients
+                  {uniqueContacts.length > 0 && (
+                    <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                      {uniqueContacts.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="all" className="flex items-center gap-2">
+                All
                 {bookings.length > 0 && (
-                  <Badge variant="secondary" className="ml-2">{bookings.length}</Badge>
+                  <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                    {bookings.length}
+                  </Badge>
                 )}
               </TabsTrigger>
             </TabsList>
             
             {/* Upcoming Appointments Tab */}
-            <TabsContent value="upcoming">
+            <TabsContent value="upcoming" className="space-y-4">
               {bookings.filter(booking => {
                 const bookingDate = new Date(booking.date + 'T' + booking.end_time.replace(/\s?[AP]M/, ''));
                 const now = new Date();
-                return bookingDate > now && 
+                return bookingDate >= now && 
                        (booking.status === 'confirmed' || booking.status === 'pending');
               }).length === 0 ? (
-                <Card>
-                  <CardContent className="pt-6 pb-6 text-center">
-                    <p className="text-muted-foreground mb-4">No upcoming appointments found.</p>
-                    {userType === 'seeker' && (
-                      <Button onClick={() => navigate('/network')}>
-                        Find an Expert
-                      </Button>
-                    )}
+                <Card className="text-center py-12">
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="text-muted-foreground text-lg">
+                        No upcoming appointments found
+                      </div>
+                      {userType === 'seeker' && (
+                        <Button onClick={() => navigate('/network')} size="lg">
+                          Find an Expert
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
                     .filter(booking => {
                       const bookingDate = new Date(booking.date + 'T' + booking.end_time.replace(/\s?[AP]M/, ''));
                       const now = new Date();
-                      return bookingDate > now && 
+                      return bookingDate >= now && 
                              (booking.status === 'confirmed' || booking.status === 'pending');
                     })
                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                    .map(booking => {
-                      // For experts, show the seeker's name (client who booked)
-                      // For seekers, show the expert's name
-                      const otherUserId = userType === 'seeker' ? booking.expert_id : booking.seeker_id;
-                      const otherUserName = userType === 'seeker' ? booking.expert_name : booking.seeker_name;
-                      const otherUser = uniqueContacts.find(c => c.id === otherUserId);
-                      
-                      // Get first name and last name from the other user's name
-                      const nameParts = otherUserName ? otherUserName.split(' ') : ['', ''];
-                      const firstName = nameParts[0] || '';
-                      const lastName = nameParts.slice(1).join(' ') || '';
-                      
-                      return (
-                        <Card key={booking.id} className="overflow-hidden">
-                          <CardHeader className="pb-2">
-                            <div className="flex justify-between items-start">
-                              <div className="flex items-center space-x-2">
-                                <Avatar>
-                                  <AvatarImage src={otherUser?.profile_image} />
-                                  <AvatarFallback>
-                                    {getInitials(otherUserName || '')}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <CardTitle className="text-lg">
-                                    {otherUserName || `${otherUser?.first_name || ''} ${otherUser?.last_name || ''}`}
-                                  </CardTitle>
-                                  <CardDescription>
-                                    {userType === 'seeker' ? 'Expert' : 'Client'}
-                                  </CardDescription>
-                                </div>
-                              </div>
-                              {getStatusBadge(booking.status)}
-                            </div>
-                          </CardHeader>
-                          
-                          <CardContent>
-                            <div className="space-y-3">
-                              <div className="flex items-center text-sm">
-                                <CalendarIcon className="h-4 w-4 mr-2 text-muted-foreground" />
-                                <span>{formatDate(booking.date)}</span>
-                                {new Date(booking.date) > new Date() && (
-                                  <Badge variant="outline" className="ml-2 bg-blue-50 text-blue-700">
-                                    {getTimeUntil(booking.date)}
-                                  </Badge>
-                                )}
-                              </div>
-                              
-                              <div className="flex items-center text-sm">
-                                <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
-                                <span>{booking.start_time} - {booking.end_time}</span>
-                              </div>
-                              
-                              <div className="flex items-center text-sm">
-                                <div className="flex items-center mr-2 text-muted-foreground">
-                                  {getSessionTypeIcon(booking.session_type)}
-                                </div>
-                                <span className="capitalize">{booking.session_type} Session</span>
-                              </div>
-                              
-                              {isAmountPositive(booking.amount) && (
-                                <div className="text-sm font-medium">
-                                  Amount: ${formatAmount(booking.amount)}
-                                </div>
-                              )}
-                              
-                              {booking.notes && (
-                                <div className="text-sm mt-2 pt-2 border-t">
-                                  <p className="text-muted-foreground mb-1">Notes:</p>
-                                  <p>{booking.notes}</p>
-                                </div>
-                              )}
-                              
-                              {/* Action buttons - different for each user type */}
-                              <div className="mt-2 pt-2 border-t">
-                                {userType === 'seeker' ? (
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="w-full"
-                                    onClick={() => navigate(`/experts/${booking.expert_id}`)}
-                                  >
-                                    View Expert Profile
-                                  </Button>
-                                ) : (
-                                  <div className="space-y-2">
-                                    {booking.status === 'pending' && (
-                                      <div className="flex space-x-2">
-                                        <Button 
-                                          size="sm" 
-                                          className="flex-1"
-                                          onClick={() => handleAcceptBooking(booking.id)}
-                                        >
-                                          <Check className="h-4 w-4 mr-1" />
-                                          Accept
-                                        </Button>
-                                        <Button 
-                                          size="sm" 
-                                          variant="outline" 
-                                          className="flex-1"
-                                          onClick={() => handleRejectBooking(booking.id)}
-                                        >
-                                          <X className="h-4 w-4 mr-1" />
-                                          Decline
-                                        </Button>
-                                      </div>
-                                    )}
-                                    <Button 
-                                      size="sm" 
-                                      variant="outline" 
-                                      className="w-full"
-                                      onClick={() => openRescheduleDialog(booking.id, booking.date)}
-                                    >
-                                      <CalendarClock className="h-4 w-4 mr-1" />
-                                      Reschedule
-                                    </Button>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
+                    .map(renderBookingCard)}
                 </div>
               )}
             </TabsContent>
             
             {/* Past Appointments Tab */}
-            <TabsContent value="past">
+            <TabsContent value="past" className="space-y-4">
               {bookings.filter(booking => {
                 const bookingDate = new Date(booking.date + 'T' + booking.end_time.replace(/\s?[AP]M/, ''));
                 const now = new Date();
@@ -908,13 +927,15 @@ const AppointmentLog = () => {
                        booking.status === 'rejected' || 
                        booking.status === 'cancelled';
               }).length === 0 ? (
-                <Card>
-                  <CardContent className="pt-6 pb-6 text-center">
-                    <p className="text-muted-foreground mb-4">No past appointments found.</p>
+                <Card className="text-center py-12">
+                  <CardContent>
+                    <div className="text-muted-foreground text-lg">
+                      No past appointments found
+                    </div>
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
                     .filter(booking => {
                       const bookingDate = new Date(booking.date + 'T' + booking.end_time.replace(/\s?[AP]M/, ''));
@@ -924,636 +945,218 @@ const AppointmentLog = () => {
                              booking.status === 'rejected' || 
                              booking.status === 'cancelled';
                     })
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) // Most recent first
-                    .map(booking => {
-                      // For experts, show the seeker's name (client who booked)
-                      // For seekers, show the expert's name
-                      const otherUserId = userType === 'seeker' ? booking.expert_id : booking.seeker_id;
-                      const otherUserName = userType === 'seeker' ? booking.expert_name : booking.seeker_name;
-                      const otherUser = uniqueContacts.find(c => c.id === otherUserId);
-                      
-                      return (
-                        <Card key={booking.id} className="overflow-hidden">
-                          <CardHeader className="pb-2">
-                            <div className="flex justify-between items-start">
-                              <div className="flex items-center space-x-2">
-                                <Avatar>
-                                  <AvatarImage src={otherUser?.profile_image} />
-                                  <AvatarFallback>
-                                    {getInitials(otherUserName || '')}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <CardTitle className="text-lg">
-                                    {otherUserName || `${otherUser?.first_name || ''} ${otherUser?.last_name || ''}`}
-                                  </CardTitle>
-                                  <CardDescription>
-                                    {userType === 'seeker' ? 'Expert' : 'Client'}
-                                  </CardDescription>
-                                </div>
-                              </div>
-                              {getStatusBadge(booking.status)}
-                            </div>
-                          </CardHeader>
-                          
-                          <CardContent>
-                            <div className="space-y-3">
-                              <div className="flex items-center text-sm">
-                                <CalendarIcon className="h-4 w-4 mr-2 text-muted-foreground" />
-                                <span>{formatDate(booking.date)}</span>
-                              </div>
-                              
-                              <div className="flex items-center text-sm">
-                                <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
-                                <span>{booking.start_time} - {booking.end_time}</span>
-                              </div>
-                              
-                              <div className="flex items-center text-sm">
-                                <div className="flex items-center mr-2 text-muted-foreground">
-                                  {getSessionTypeIcon(booking.session_type)}
-                                </div>
-                                <span className="capitalize">{booking.session_type} Session</span>
-                              </div>
-                              
-                              {isAmountPositive(booking.amount) && (
-                                <div className="text-sm font-medium">
-                                  Amount: ${formatAmount(booking.amount)}
-                                </div>
-                              )}
-                              
-                              {booking.notes && (
-                                <div className="text-sm mt-2 pt-2 border-t">
-                                  <p className="text-muted-foreground mb-1">Notes:</p>
-                                  <p>{booking.notes}</p>
-                                </div>
-                              )}
-                              
-                              {booking.status === 'completed' && (
-                                <div className="mt-2 pt-2 border-t">
-                                  <Button size="sm" variant="outline" className="w-full">
-                                    Leave Feedback
-                                  </Button>
-                                </div>
-                              )}
-                              
-                              {userType === 'seeker' && (
-                                <div className="mt-2 pt-2 border-t">
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="w-full"
-                                    onClick={() => navigate(`/experts/${booking.expert_id}`)}
-                                  >
-                                    Book Again
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .map(renderBookingCard)}
                 </div>
               )}
             </TabsContent>
             
-            {/* Contacts Tab (My Experts/My Clients) */}
-            <TabsContent value="contacts">
+            {/* Contacts Tab */}
+            {userType === 'expert' && (
+              <TabsContent value="contacts" className="space-y-4">
               {uniqueContacts.length === 0 ? (
-                <Card>
-                  <CardContent className="pt-6 pb-6 text-center">
-                    <p className="text-muted-foreground mb-4">
-                      {userType === 'seeker' 
-                        ? "You haven't booked any experts yet." 
-                        : "You don't have any clients yet."}
-                    </p>
-                    {userType === 'seeker' && (
-                      <Button onClick={() => navigate('/network')}>
-                        Find an Expert
-                      </Button>
-                    )}
+                <Card className="text-center py-12">
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="text-muted-foreground text-lg">
+                        You don't have any clients yet
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {uniqueContacts.map(contact => {
                     const contactBookings = getBookingsWithContact(contact.id);
-                    const lastBooking = contactBookings.sort((a, b) => 
-                      new Date(b.date).getTime() - new Date(a.date).getTime()
-                    )[0];
+                    const lastBooking = contactBookings.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                    const upcomingCount = contactBookings.filter(b => new Date(b.date) > new Date() && (b.status === 'confirmed' || b.status === 'pending')).length;
+                    const completedCount = contactBookings.filter(b => b.status === 'completed').length;
+                    const totalCount = contactBookings.length;
                     
                     return (
-                      <Card key={contact.id} className="overflow-hidden">
+                      <Card key={contact.id} className="overflow-hidden hover:shadow-md transition-shadow">
                         <CardHeader>
                           <div className="flex items-start space-x-4">
                             <Avatar className="h-12 w-12">
                               <AvatarImage src={contact.profile_image} />
-                              <AvatarFallback>
+                              <AvatarFallback className="bg-primary/10">
                                 {getInitials(`${contact.first_name} ${contact.last_name}`)}
                               </AvatarFallback>
                             </Avatar>
-                            <div>
-                              <CardTitle>
+                            <div className="flex-1">
+                              <CardTitle className="text-lg">
                                 {contact.first_name} {contact.last_name}
                               </CardTitle>
                               <CardDescription>
                                 {userType === 'seeker' 
-                                  ? contact.specialty || 'Expert'
-                                  : contact.company || 'Client'}
+                                  ? (contact.specialty || 'Expert')
+                                  : (contact.company || 'Client')}
                               </CardDescription>
                               {userType === 'seeker' && contact.designation && (
                                 <p className="text-xs text-muted-foreground mt-1">
                                   {contact.designation}
                                 </p>
                               )}
-                              {userType === 'expert' && contact.industry && (
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Industry: {contact.industry}
-                                </p>
-                              )}
                             </div>
                           </div>
                         </CardHeader>
                         
-                        <CardContent>
-                          <div className="space-y-4">
+                        <CardContent className="space-y-4">
+                          <div className="grid grid-cols-4 gap-4 text-center">
                             <div>
-                              <h4 className="text-sm font-medium mb-2">Session History</h4>
-                              <div className="text-sm">
-                                <p>Total Sessions: {contactBookings.length}</p>
-                                <p>Last Session: {lastBooking ? formatDate(lastBooking.date) : 'N/A'}</p>
-                                <p>
-                                  Upcoming: {
-                                    contactBookings.filter(b => 
-                                      new Date(b.date) > new Date() && 
-                                      (b.status === 'confirmed' || b.status === 'pending')
-                                    ).length
-                                  }
-                                </p>
+                              <div className="text-2xl font-bold text-blue-600">
+                                {completedCount}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Completed
                               </div>
                             </div>
-                            
-                            <Separator />
-                            
-                            {userType === 'seeker' ? (
-                              <div className="flex space-x-2">
-                                <Button 
-                                  className="flex-1" 
-                                  size="sm"
-                                  onClick={() => navigate(`/experts/${contact.id}`)}
-                                >
-                                  Book Again
-                                </Button>
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  className="flex-1"
-                                  onClick={() => navigate(`/experts/${contact.id}`)}
-                                >
-                                  View Profile
-                                </Button>
+                            <div>
+                              <div className="text-2xl font-bold text-green-600">
+                                {upcomingCount}
                               </div>
-                            ) : (
-                              <div className="flex space-x-2">
-                                <Button 
-                                  className="flex-1" 
-                                  size="sm"
-                                >
-                                  Contact
-                                </Button>
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  className="flex-1"
-                                >
-                                  View Details
-                                </Button>
+                              <div className="text-xs text-muted-foreground">
+                                Upcoming
                               </div>
-                            )}
+                            </div>
+                            <div>
+                              <div className="text-2xl font-bold text-gray-600">
+                                {totalCount}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Total
+                              </div>
+                            </div>
+                            <div>
+                              <Button 
+                                size="sm" 
+                                className="w-full"
+                                onClick={() => {
+                                  toast({
+                                    title: "Feature Coming Soon",
+                                    description: "Client messaging will be available soon",
+                                  });
+                                }}
+                              >
+                                Contact
+                              </Button>
+                            </div>
                           </div>
+                          
+                          {lastBooking && (
+                            <div className="pt-3 border-t">
+                              <p className="text-sm text-muted-foreground">
+                                Last session: {formatDate(lastBooking.date)}
+                              </p>
+                            </div>
+                          )}
                         </CardContent>
+                        
+                        <CardFooter className="pt-4 border-t bg-gray-50/50">
+                          {userType === 'seeker' ? (
+                            <div className="flex space-x-2 w-full">
+                              <Button 
+                                className="flex-1" 
+                                size="sm"
+                                onClick={() => navigate(`/experts/${contact.id}`)}
+                              >
+                                Book Again
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="flex-1"
+                                onClick={() => navigate(`/experts/${contact.id}`)}
+                              >
+                                View Profile
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex space-x-2 w-full">
+                              <Button 
+                                className="flex-1" 
+                                size="sm"
+                                onClick={() => navigate(`/clients/${contact.id}`)}
+                              >
+                                View Profile
+                              </Button>
+                            </div>
+                          )}
+                        </CardFooter>
                       </Card>
                     );
                   })}
                 </div>
               )}
-            </TabsContent>
+              </TabsContent>
+            )}
             
             {/* All Appointments Tab */}
-            <TabsContent value="all">
+            <TabsContent value="all" className="space-y-4">
               {bookings.length === 0 ? (
-                <Card>
-                  <CardContent className="pt-6 pb-6 text-center">
-                    <p className="text-muted-foreground mb-4">No appointments found.</p>
-                    {userType === 'seeker' && (
-                      <Button onClick={() => navigate('/network')}>
-                        Find an Expert
-                      </Button>
-                    )}
+                <Card className="text-center py-12">
+                  <CardContent>
+                    <div className="text-muted-foreground text-lg">
+                      No appointments found
+                    </div>
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
-                    .map(booking => {
-                      // For experts, show the seeker's name (client who booked)
-                      // For seekers, show the expert's name
-                      const otherUserId = userType === 'seeker' ? booking.expert_id : booking.seeker_id;
-                      const otherUserName = userType === 'seeker' ? booking.expert_name : booking.seeker_name;
-                      const otherUser = uniqueContacts.find(c => c.id === otherUserId);
-                      
-                      return (
-                        <Card key={booking.id} className="overflow-hidden">
-                          <CardHeader className="pb-2">
-                            <div className="flex justify-between items-start">
-                              <div className="flex items-center space-x-2">
-                                <Avatar>
-                                  <AvatarImage src={otherUser?.profile_image} />
-                                  <AvatarFallback>
-                                    {getInitials(otherUserName || '')}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <CardTitle className="text-lg">
-                                    {otherUserName || `${otherUser?.first_name || ''} ${otherUser?.last_name || ''}`}
-                                  </CardTitle>
-                                  <CardDescription>
-                                    {userType === 'seeker' ? 'Expert' : 'Client'}
-                                  </CardDescription>
-                                </div>
-                              </div>
-                              {getStatusBadge(booking.status)}
-                            </div>
-                          </CardHeader>
-                          
-                          <CardContent>
-                            <div className="space-y-3">
-                              <div className="flex items-center text-sm">
-                                <CalendarIcon className="h-4 w-4 mr-2 text-muted-foreground" />
-                                <span>{formatDate(booking.date)}</span>
-                                {new Date(booking.date) > new Date() && (
-                                  <Badge variant="outline" className="ml-2 bg-blue-50 text-blue-700">
-                                    {getTimeUntil(booking.date)}
-                                  </Badge>
-                                )}
-                              </div>
-                              
-                              <div className="flex items-center text-sm">
-                                <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
-                                <span>{booking.start_time} - {booking.end_time}</span>
-                              </div>
-                              
-                              <div className="flex items-center text-sm">
-                                <div className="flex items-center mr-2 text-muted-foreground">
-                                  {getSessionTypeIcon(booking.session_type)}
-                                </div>
-                                <span className="capitalize">{booking.session_type} Session</span>
-                              </div>
-                              
-                              {isAmountPositive(booking.amount) && (
-                                <div className="text-sm font-medium">
-                                  Amount: ${formatAmount(booking.amount)}
-                                </div>
-                              )}
-                              
-                              {booking.notes && (
-                                <div className="text-sm mt-2 pt-2 border-t">
-                                  <p className="text-muted-foreground mb-1">Notes:</p>
-                                  <p>{booking.notes}</p>
-                                </div>
-                              )}
-                              
-                              {/* Action buttons based on status and user type */}
-                              {booking.status === 'pending' && userType === 'expert' && (
-                                <div className="mt-2 pt-2 border-t">
-                                  <div className="flex space-x-2">
-                                    <Button 
-                                      size="sm" 
-                                      className="flex-1"
-                                      onClick={() => handleAcceptBooking(booking.id)}
-                                    >
-                                      <Check className="h-4 w-4 mr-1" />
-                                      Accept
-                                    </Button>
-                                    <Button 
-                                      size="sm" 
-                                      variant="outline" 
-                                      className="flex-1"
-                                      onClick={() => handleRejectBooking(booking.id)}
-                                    >
-                                      <X className="h-4 w-4 mr-1" />
-                                      Decline
-                                    </Button>
-                                  </div>
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="w-full mt-2"
-                                    onClick={() => openRescheduleDialog(booking.id, booking.date)}
-                                  >
-                                    <CalendarClock className="h-4 w-4 mr-1" />
-                                    Reschedule
-                                  </Button>
-                                </div>
-                              )}
-                              
-                              {booking.status === 'confirmed' && (
-                                <div className="mt-2 pt-2 border-t">
-                                  {userType === 'expert' && (
-                                    <div className="flex space-x-2">
-                                      <Button 
-                                        size="sm" 
-                                        className="flex-1"
-                                        onClick={() => navigate(`/session/${booking.id}`)}
-                                      >
-                                        Start Session
-                                      </Button>
-                                      <Button 
-                                        size="sm" 
-                                        variant="outline" 
-                                        className="flex-1"
-                                        onClick={() => openRescheduleDialog(booking.id, booking.date)}
-                                      >
-                                        <CalendarClock className="h-4 w-4 mr-1" />
-                                        Reschedule
-                                      </Button>
-                                    </div>
-                                  )}
-                                  
-                                  {userType === 'seeker' && (
-                                    <Button 
-                                      size="sm" 
-                                      className="w-full"
-                                      onClick={() => navigate(`/session/${booking.id}`)}
-                                    >
-                                      Join Session
-                                    </Button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .map(renderBookingCard)}
                 </div>
               )}
-            </TabsContent>
-
-            {/* Both Views Tab */}
-            <TabsContent value="both">
-              <div className="mb-6">
-                <h2 className="text-xl font-semibold mb-4">Seeker Appointments</h2>
-                {loadingSeeker ? (
-                  <div className="flex justify-center p-4">
-                    <Spinner size="lg" />
-                  </div>
-                ) : seekerBookings.length === 0 ? (
-                  <Card>
-                    <CardContent className="pt-6 pb-6 text-center">
-                      <p className="text-muted-foreground mb-4">No seeker appointments found.</p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {seekerBookings.map(booking => {
-                      const expert = uniqueContacts.find(c => c.id === booking.expert_id) || {
-                        name: booking.expert_name || 'Expert',
-                        profile_image: ''
-                      };
-                      
-                      return (
-                        <Card key={booking.id} className="overflow-hidden">
-                          <CardHeader className="pb-2">
-                            <div className="flex justify-between items-start">
-                              <div className="flex items-center space-x-2">
-                                <Avatar>
-                                  <AvatarImage src={expert?.profile_image} />
-                                  <AvatarFallback>{expert?.name?.charAt(0) || 'E'}</AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <h3 className="font-medium">{expert?.name || booking.expert_name || 'Expert'}</h3>
-                                  <p className="text-sm text-muted-foreground">
-                                    {formatDate(booking.date)} • {booking.start_time} - {booking.end_time}
-                                  </p>
-                                </div>
-                              </div>
-                              <Badge variant={getStatusVariant(booking.status)}>
-                                {capitalizeFirstLetter(booking.status)}
-                              </Badge>
-                            </div>
-                          </CardHeader>
-                          <CardContent>
-                            <div className="text-sm">
-                              <div className="flex items-center mb-1">
-                                <Calendar className="mr-2 h-4 w-4 opacity-70" />
-                                <span>{formatDate(booking.date)}</span>
-                              </div>
-                              <div className="flex items-center mb-1">
-                                <Clock className="mr-2 h-4 w-4 opacity-70" />
-                                <span>{booking.start_time} - {booking.end_time}</span>
-                              </div>
-                              <div className="flex items-center">
-                                <Video className="mr-2 h-4 w-4 opacity-70" />
-                                <span>{capitalizeFirstLetter(booking.session_type)} Session</span>
-                              </div>
-                            </div>
-                          </CardContent>
-                          <CardFooter className="bg-muted/50 pt-2">
-                            <div className="flex justify-between w-full">
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => handleReschedule(booking)}
-                              >
-                                Reschedule
-                              </Button>
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => handleCancel(booking.id)}
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          </CardFooter>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <h2 className="text-xl font-semibold mb-4">Expert Appointments</h2>
-                {expertBookings.length === 0 ? (
-                  <Card>
-                    <CardContent className="pt-6 pb-6 text-center">
-                      <p className="text-muted-foreground mb-4">No expert appointments found.</p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {expertBookings.map(booking => {
-                      const seeker = uniqueContacts.find(c => c.id === booking.seeker_id);
-                      return (
-                        <Card key={booking.id} className="overflow-hidden">
-                          <CardHeader className="pb-2">
-                            <div className="flex justify-between items-start">
-                              <div className="flex items-center space-x-2">
-                                <Avatar>
-                                  <AvatarImage src={seeker?.profile_image} />
-                                  <AvatarFallback>
-                                    {getInitials(seeker ? `${seeker.first_name} ${seeker.last_name}` : '')}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <CardTitle className="text-lg">{seeker ? `${seeker.first_name} ${seeker.last_name}` : ''}</CardTitle>
-                                  <CardDescription>{seeker?.company || 'Client'}</CardDescription>
-                                </div>
-                              </div>
-                              {getStatusBadge(booking.status)}
-                            </div>
-                          </CardHeader>
-                          <CardContent>
-                            <div className="space-y-3">
-                              <div className="flex items-center text-sm">
-                                <CalendarIcon className="h-4 w-4 mr-2 text-muted-foreground" />
-                                <span>{formatDate(booking.date)}</span>
-                              </div>
-                              <div className="flex items-center text-sm">
-                                <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
-                                <span>{booking.start_time} - {booking.end_time}</span>
-                              </div>
-                              <div className="flex items-center text-sm">
-                                <div className="flex items-center mr-2 text-muted-foreground">
-                                  {getSessionTypeIcon(booking.session_type)}
-                                </div>
-                                <span className="capitalize">{booking.session_type} Session</span>
-                              </div>
-                              {isAmountPositive(booking.amount) && (
-                                <div className="text-sm font-medium">
-                                  Amount: ${formatAmount(booking.amount)}
-                                </div>
-                              )}
-                              <div className="mt-2 pt-2 border-t">
-                                {booking.status === 'pending' && (
-                                  <div className="flex space-x-2">
-                                    <Button 
-                                      size="sm" 
-                                      className="flex-1"
-                                      onClick={() => handleAcceptBooking(booking.id)}
-                                    >
-                                      <Check className="h-4 w-4 mr-1" />
-                                      Accept
-                                    </Button>
-                                    <Button 
-                                      size="sm" 
-                                      variant="outline" 
-                                      className="flex-1"
-                                      onClick={() => handleRejectBooking(booking.id)}
-                                    >
-                                      <X className="h-4 w-4 mr-1" />
-                                      Decline
-                                    </Button>
-                                  </div>
-                                )}
-                                {booking.status === 'confirmed' && (
-                                  <div className="flex space-x-2">
-                                    <Button 
-                                      size="sm" 
-                                      className="flex-1"
-                                      onClick={() => navigate(`/session/${booking.id}`)}
-                                    >
-                                      Start Session
-                                    </Button>
-                                    <Button 
-                                      size="sm" 
-                                      variant="outline" 
-                                      className="flex-1"
-                                      onClick={() => openRescheduleDialog(booking.id, booking.date)}
-                                    >
-                                      <CalendarClock className="h-4 w-4 mr-1" />
-                                      Reschedule
-                                    </Button>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
             </TabsContent>
           </Tabs>
         )}
       </div>
       <Footer />
+
       {/* Reschedule Dialog */}
       <Dialog open={isRescheduleOpen} onOpenChange={setIsRescheduleOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Reschedule Appointment</DialogTitle>
             <DialogDescription>
-              Select a new date and time for this appointment.
-              The client will be notified of the change.
+              Select a new date and time for your appointment.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="date">Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={"outline"}
-                    className="justify-start text-left font-normal"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {rescheduleDate ? format(rescheduleDate, "PPP") : "Select a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={rescheduleDate}
-                    onSelect={setRescheduleDate}
-                    initialFocus
-                    disabled={(date) => date < new Date()}
-                  />
-                </PopoverContent>
-              </Popover>
+          <form onSubmit={handleRescheduleSubmit}>
+            <div className="grid gap-4 py-4">
+              <div>
+                <Label htmlFor="reschedule-date">Date</Label>
+                <Calendar 
+                  mode="single" 
+                  selected={rescheduleDate} 
+                  onSelect={setRescheduleDate} 
+                  disabled={(date) => date < new Date()} 
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <Label htmlFor="reschedule-time">Time</Label>
+                <Select onValueChange={setRescheduleTime} value={rescheduleTime}>
+                  <SelectTrigger id="reschedule-time" className="w-full">
+                    <SelectValue placeholder="Select time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[
+                      "09:00 AM", "10:00 AM", "11:00 AM", "12:00 PM",
+                      "01:00 PM", "02:00 PM", "03:00 PM", "04:00 PM",
+                      "05:00 PM", "06:00 PM", "07:00 PM", "08:00 PM"
+                    ].map(time => (
+                      <SelectItem key={time} value={time}>{time}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="time">Time</Label>
-              <Select onValueChange={setRescheduleTime}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a time" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="9:00 AM">9:00 AM</SelectItem>
-                  <SelectItem value="10:00 AM">10:00 AM</SelectItem>
-                  <SelectItem value="11:00 AM">11:00 AM</SelectItem>
-                  <SelectItem value="12:00 PM">12:00 PM</SelectItem>
-                  <SelectItem value="1:00 PM">1:00 PM</SelectItem>
-                  <SelectItem value="2:00 PM">2:00 PM</SelectItem>
-                  <SelectItem value="3:00 PM">3:00 PM</SelectItem>
-                  <SelectItem value="4:00 PM">4:00 PM</SelectItem>
-                  <SelectItem value="5:00 PM">5:00 PM</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRescheduleOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleRescheduleSubmit} disabled={!rescheduleDate || !rescheduleTime}>
-              Confirm Reschedule
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="submit">Reschedule</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

@@ -1,0 +1,84 @@
+Please manually update your src/pages/Session.tsx file with the following changes:
+
+1. Refactor useEffect hooks:
+
+- Use one useEffect to fetch session details and set session and userRole on component mount.
+- Use a separate useEffect to watch canJoin and session, and call fetchAgoraToken when canJoin is true and token is not set.
+
+2. Add console.log statements for debugging:
+
+- Inside fetchAgoraToken, log when it is called and the received token.
+- Inside checkSessionTime, log minutesUntilSession and canJoin state changes.
+- Before the return statement, log canJoin and agoraToken values.
+
+Example code snippet for the relevant parts:
+
+// Fetch session details and user role on mount
+useEffect(() => {
+  const fetchSessionDetails = async () => {
+    // ...existing code...
+    checkSessionTime(sessionData);
+  };
+  fetchSessionDetails();
+
+  const interval = setInterval(() => {
+    if (session) {
+      checkSessionTime(session);
+    }
+  }, 30000);
+
+  return () => clearInterval(interval);
+}, [id]);
+
+// Watch canJoin and session to fetch Agora token
+useEffect(() => {
+  if (canJoin && session && !agoraToken) {
+    console.log('Fetching Agora token because canJoin is true and token is not set');
+    fetchAgoraToken(session.id);
+  }
+}, [canJoin, session, agoraToken]);
+
+const checkSessionTime = (sessionData) => {
+  const now = new Date();
+  const sessionDate = parseISO(`${sessionData.date}T${sessionData.start_time}`);
+  const minutesUntilSession = differenceInMinutes(sessionDate, now);
+
+  console.log('Checking session time, minutesUntilSession:', minutesUntilSession);
+
+  if (minutesUntilSession <= 5 && minutesUntilSession >= -120) {
+    if (!canJoin) {
+      console.log('Setting canJoin to true');
+      setCanJoin(true);
+    }
+    setTimeRemaining(null);
+  } else if (minutesUntilSession > 5) {
+    if (canJoin) {
+      console.log('Setting canJoin to false');
+      setCanJoin(false);
+    }
+    setTimeRemaining(`Session will be available in ${formatTimeRemaining(minutesUntilSession)}`);
+  } else {
+    if (canJoin) {
+      console.log('Setting canJoin to false');
+      setCanJoin(false);
+    }
+    setTimeRemaining('This session has ended');
+  }
+};
+
+const fetchAgoraToken = async (sessionId) => {
+  try {
+    console.log('fetchAgoraToken called for sessionId:', sessionId);
+    // ...existing code...
+    console.log('Received Agora token:', data.token);
+    setAgoraToken(data.token);
+  } catch (error) {
+    // ...existing error handling...
+  }
+};
+
+console.log('Session render:', { canJoin, agoraToken });
+
+After applying these changes, restart your development server, reproduce the issue, and share the browser console output including the "Session render:" log line.
+
+This will help diagnose the token fetching issue and allow me to assist you further.

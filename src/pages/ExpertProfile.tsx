@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from "react-router-dom";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
-import { Button } from "@/components/ui/button";
+import Navbar from "../components/layout/Navbar";
+import Footer from "../components/layout/Footer";
+import { Button } from "../components/ui/button";
 import { ErrorBoundary } from "react-error-boundary";
 import { FaLinkedin, FaVideo, FaPhone, FaComments } from 'react-icons/fa';
 import {
@@ -12,7 +12,7 @@ import {
   DrawerTitle,
   DrawerDescription,
   DrawerClose,
-} from "@/components/ui/drawer";
+} from "../components/ui/drawer";
 import { 
   Dialog,
   DialogContent,
@@ -20,10 +20,10 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { toast } from "@/components/ui/use-toast";
+} from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { toast } from "../components/ui/use-toast";
 
 interface Expert {
   id: string;
@@ -112,8 +112,8 @@ const ExpertProfileContent = () => {
       setLoading(true);
       console.log("Fetching expert profile...");
 
-      const apiUrl = import.meta.env.VITE_API_URL;
-      const response = await fetch(apiUrl + "/api/experts/profiles/" + id);
+      const API_BASE_URL = import.meta.env.VITE_API_URL;
+      const response = await fetch(`${API_BASE_URL}/api/experts/profiles/${id}`);
       console.log("Response status:", response.status);
 
       if (!response.ok) {
@@ -145,7 +145,7 @@ const ExpertProfileContent = () => {
       setAvailabilityLoading(true);
       setAvailabilityError(null);
 
-      const apiUrl = import.meta.env.VITE_API_URL;
+      const API_BASE_URL = import.meta.env.VITE_API_URL;
       
       // Get user data from localStorage if available
       let authToken = null;
@@ -166,8 +166,7 @@ const ExpertProfileContent = () => {
       }
       
       // Make the request
-      const response = await fetch(`${apiUrl}/api/experts/availability/${userId}`, {
-        method: 'GET',
+      const response = await fetch(`${API_BASE_URL}/api/experts/availability/${userId}`, {
         headers
       });
       
@@ -239,7 +238,7 @@ const ExpertProfileContent = () => {
 
   const fetchExistingBookings = async (expertId: string) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8081';
+      const API_BASE_URL = import.meta.env.VITE_API_URL;
       const userData = localStorage.getItem('user');
       
       if (!userData) {
@@ -255,9 +254,9 @@ const ExpertProfileContent = () => {
         return;
       }
       
-      console.log(`Fetching bookings from: ${apiUrl}/api/bookings/expert/${expertId}`);
+      console.log(`Fetching bookings from: ${API_BASE_URL}/api/bookings/expert/${expertId}`);
       
-      const response = await fetch(`${apiUrl}/api/bookings/expert/${expertId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/bookings/expert/${expertId}`, {
         headers: {
           'Authorization': `Bearer ${token.trim()}`
         }
@@ -316,7 +315,7 @@ const ExpertProfileContent = () => {
   const convertTo24Hour = (time12h: string): string => {
     if (!time12h) return '';
     const match = time12h.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/i);
-    if (!match) return time12h;
+    if (!match) return time12h; // Return as is if format doesn't match
     let [_, hourStr, minuteStr, meridian] = match;
     let hour = parseInt(hourStr, 10);
     const minute = minuteStr;
@@ -412,13 +411,10 @@ const ExpertProfileContent = () => {
       setIsBooking(true);
       
       // Get API URL
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8081';
-      console.log("Using API URL:", apiUrl);
+      const API_BASE_URL = import.meta.env.VITE_API_URL;
       
       // Get user data from localStorage
       const userData = localStorage.getItem('user');
-      console.log("Raw user data from localStorage:", userData);
-      
       if (!userData) {
         toast({
           title: "Authentication Error",
@@ -432,7 +428,6 @@ const ExpertProfileContent = () => {
       let parsedUserData;
       try {
         parsedUserData = JSON.parse(userData);
-        console.log("Parsed user data:", parsedUserData);
       } catch (e) {
         console.error("Error parsing user data:", e);
         toast({
@@ -455,9 +450,6 @@ const ExpertProfileContent = () => {
         return;
       }
       
-      // Format time if needed (convert from 12-hour to 24-hour format)
-      // Removed this function as input type="time" already provides 24-hour format
-      
       // Prepare request payload
       const payload = {
         expert_id: expert?.user_id,
@@ -469,10 +461,8 @@ const ExpertProfileContent = () => {
         amount: calculatedPrice
       };
       
-      console.log("Booking payload:", payload);
-      
       // Make the request
-      const response = await fetch(`${apiUrl}/api/bookings`, {
+      const response = await fetch(`${API_BASE_URL}/api/bookings`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -481,27 +471,19 @@ const ExpertProfileContent = () => {
         body: JSON.stringify(payload)
       });
       
-      console.log("Response status:", response.status);
-      
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("Error response:", errorText);
-        
         let errorMessage = "Failed to book session";
         try {
           const errorData = JSON.parse(errorText);
           errorMessage = errorData.message || errorMessage;
         } catch (e) {
-          // If not JSON, use the text as is
           if (errorText) errorMessage = errorText;
         }
-        
         throw new Error(errorMessage);
       }
       
       const result = await response.json();
-      console.log("Booking result:", result);
-      
       toast({
         title: "Success",
         description: "Session booked successfully! The expert will be notified.",
@@ -510,7 +492,6 @@ const ExpertProfileContent = () => {
       setBookingDialogOpen(false);
       
     } catch (error) {
-      console.error("Booking error:", error);
       toast({
         title: "Booking Failed",
         description: error instanceof Error ? error.message : "Failed to book session",
@@ -641,9 +622,9 @@ const ExpertProfileContent = () => {
                       <div className="flex items-center justify-between text-sm">
                         <span>Next Available</span>
                         <span className="text-primary font-medium">
-                          {availability.length > 0 
-                              ? `${availability[0].day_of_week}, ${formatTime(availability[0].start_time)}`
-                              : "Check schedule"}
+                          {availability.length > 0 ? 
+                            `${availability[0].day_of_week}, ${formatTime(availability[0].start_time)}` : 
+                            "Check schedule"}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
@@ -680,78 +661,86 @@ const ExpertProfileContent = () => {
                   </DrawerDescription>
                 </DrawerHeader>
                 
-                <div className="p-4">
-                  {availabilityLoading && (
-                    <div className="py-8 text-center">
-                      <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full mx-auto"></div>
-                      <p className="mt-2 text-sm text-muted-foreground">Loading availability...</p>
-                    </div>
-                  )}
-                  
-                  {availabilityError && (
-                    <div className="py-8 text-center">
-                      <p className="text-red-500 text-sm">{availabilityError}</p>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="mt-2"
-                        onClick={() => expert?.user_id && fetchAvailability(expert.user_id)}
-                      >
-                        Try Again
-                      </Button>
-                    </div>
-                  )}
-                  
-                  {!availabilityLoading && !availabilityError && (
-                    <div className="space-y-6">
-                      {groupedAvailability.map(({ day, slots }) => (
-                        <div key={day} className="border-b pb-4 last:border-0">
-                          <h4 className="font-semibold mb-2">{day}</h4>
-                          {slots.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No availability</p>
-                          ) : (
-                            <div className="grid grid-cols-2 gap-2">
-                              {slots.map((slot, index) => {
-                                // Check if the time already includes AM/PM
-                                const startTimeFormatted = slot.start_time.includes('AM') || slot.start_time.includes('PM') 
-                                  ? slot.start_time 
-                                  : formatTime(slot.start_time);
-                                
-                                const endTimeFormatted = slot.end_time.includes('AM') || slot.end_time.includes('PM')
-                                  ? slot.end_time
-                                  : formatTime(slot.end_time);
-                                
-                                const isBooked = isSlotBooked(day, slot.start_time, slot.end_time);
-                                
-                                return (
-                                  <Button 
-                                    key={index}
-                                    variant={isBooked ? "secondary" : "outline"}
-                                    size="sm"
-                                    className={`justify-start text-left h-auto py-2 ${isBooked ? 'opacity-50' : ''}`}
-                                    disabled={isBooked}
-                                    onClick={() => !isBooked && handleSelectSlot(day, slot)}
-                                  >
-                                    <span className={`${isBooked ? 'text-muted-foreground' : 'text-primary'} font-medium`}>
-                                      {startTimeFormatted} - {endTimeFormatted}
-                                      {isBooked && <span className="ml-2 text-xs">(Booked)</span>}
-                                    </span>
-                                  </Button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      
-                      {availability.length === 0 && !availabilityLoading && (
-                        <div className="py-8 text-center">
-                          <p className="text-muted-foreground">No availability slots found for this expert.</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
+              <div className="p-4 relative max-h-[60vh] overflow-y-auto">
+                {availabilityLoading && (
+                  <div className="py-8 text-center">
+                    <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full mx-auto"></div>
+                    <p className="mt-2 text-sm text-muted-foreground">Loading availability...</p>
+                  </div>
+                )}
+                
+                {availabilityError && (
+                  <div className="py-8 text-center">
+                    <p className="text-red-500 text-sm">{availabilityError}</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="mt-2"
+                      onClick={() => expert?.user_id && fetchAvailability(expert.user_id)}
+                    >
+                      Try Again
+                    </Button>
+                  </div>
+                )}
+                
+                {!availabilityLoading && !availabilityError && (
+                  <div className="space-y-6">
+                    {groupedAvailability.map(({ day, slots }) => (
+                      <div key={day} className="border-b pb-4 last:border-0">
+                        <h4 className="font-semibold mb-2">{day}</h4>
+                        {slots.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No availability</p>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2">
+                            {slots.map((slot, index) => {
+                              // Check if the time already includes AM/PM
+                              const startTimeFormatted = slot.start_time.includes('AM') || slot.start_time.includes('PM') 
+                                ? slot.start_time 
+                                : formatTime(slot.start_time);
+                              
+                              const endTimeFormatted = slot.end_time.includes('AM') || slot.end_time.includes('PM')
+                                ? slot.end_time
+                                : formatTime(slot.end_time);
+                              
+                              const isBooked = isSlotBooked(day, slot.start_time, slot.end_time);
+                              
+                              return (
+                                <Button 
+                                  key={index}
+                                  variant={isBooked ? "secondary" : "outline"}
+                                  size="sm"
+                                  className={`justify-start text-left h-auto py-2 ${isBooked ? 'opacity-50' : ''}`}
+                                  disabled={isBooked}
+                                  onClick={() => !isBooked && handleSelectSlot(day, slot)}
+                                >
+                                  <span className={`${isBooked ? 'text-muted-foreground' : 'text-primary'} font-medium`}>
+                                    {startTimeFormatted} - {endTimeFormatted}
+                                    {isBooked && <span className="ml-2 text-xs">(Booked)</span>}
+                                  </span>
+                                </Button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    
+                    {availability.length === 0 && !availabilityLoading && (
+                      <div className="py-8 text-center">
+                        <p className="text-muted-foreground">No availability slots found for this expert.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="pt-4 border-t flex justify-end bg-background">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsDrawerOpen(false)}
+                  >
+                    Close
+                  </Button>
                 </div>
+              </div>
               </DrawerContent>
             </Drawer>
           </div>

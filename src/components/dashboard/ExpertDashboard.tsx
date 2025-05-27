@@ -9,6 +9,8 @@ import AvailabilitySection from './AvailabilitySection';
 import ActivityMeetingsSection from './ActivityMeetingsSection';
 import PricingCard from './PricingCard';
 import { Pencil } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Calendar } from 'lucide-react';
 
 interface ExpertProfile {
   first_name: string;
@@ -326,3 +328,4 @@ const ExpertDashboard: React.FC = () => {
 };
 
 export default ExpertDashboard;
+

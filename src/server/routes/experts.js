@@ -1,4 +1,4 @@
-const express = require('express');
+    const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
@@ -679,44 +679,6 @@ router.get('/profile/:user_id', async (req, res) => {
 });
 
 // Fetch expert profile by user_id
-router.get('/profile/:user_id', async (req, res) => {
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    const { user_id } = req.params;
-
-    // Debug log to verify the user_id
-    console.log('Fetching profile for user_id:', user_id);
-
-    // Fetch expert profile with user data
-    const [profiles] = await connection.execute(
-      `SELECT * FROM expert_profiles WHERE user_id = ?`,
-      [user_id]
-    );
-
-    if (profiles.length === 0) {
-      console.log('No profile found for user_id:', user_id);
-      return res.status(404).json({
-        success: false,
-        message: 'Expert profile not found'
-      });
-    }
-
-    console.log('Profile found:', profiles[0]);
-    res.json({
-      success: true,
-      data: profiles[0]
-    });
-  } catch (error) {
-    console.error('Error fetching expert profile:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching expert profile',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  } finally {
-    if (connection) connection.release();
-  }
-});
+// Removed duplicate route to avoid conflicts
 
 module.exports = router;

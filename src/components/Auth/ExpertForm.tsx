@@ -149,9 +149,18 @@ const ExpertForm: React.FC = () => {
         e.preventDefault();
         setError('');
 
-        const API_BASE_URL = import.meta.env.VITE_API_URL;
-
         try {
+            // Validate inputs
+            if (!loginData.email || !loginData.password) {
+                setError('Email and password are required');
+                return;
+            }
+
+            const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081';
+            
+            console.log('Attempting login with:', { email: loginData.email, password: '***' });
+            console.log('API URL:', API_BASE_URL);
+
             const response = await fetch(`${API_BASE_URL}/api/auth/login/expert`, {
                 method: 'POST',
                 headers: {
@@ -160,11 +169,12 @@ const ExpertForm: React.FC = () => {
                 body: JSON.stringify(loginData)
             });
 
-            const result = await response.json();
-
             if (!response.ok) {
-                throw new Error(result.message || 'Login failed');
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Login failed');
             }
+
+            const result = await response.json();
 
             // Store user data
             const userData = {
@@ -500,3 +510,5 @@ const ExpertForm: React.FC = () => {
 };
 
 export default ExpertForm;
+
+
