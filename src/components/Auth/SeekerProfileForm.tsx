@@ -150,6 +150,8 @@ const SeekerProfileForm: React.FC = () => {
                                     value={profileData.company}
                                     onChange={handleInputChange}
                                     required
+                                    title="Company or Organization Name"
+                                    placeholder="Enter your company or organization name"
                                 />
                             </div>
                             
@@ -162,6 +164,8 @@ const SeekerProfileForm: React.FC = () => {
                                     value={profileData.position}
                                     onChange={handleInputChange}
                                     required
+                                    title="Your current job position"
+                                    placeholder="Enter your current position"
                                 />
                             </div>
                             
@@ -174,6 +178,8 @@ const SeekerProfileForm: React.FC = () => {
                                     value={profileData.experience}
                                     onChange={handleInputChange}
                                     required
+                                    title="Years of professional experience"
+                                    placeholder="Enter your years of experience"
                                 />
                             </div>
                             
@@ -186,6 +192,8 @@ const SeekerProfileForm: React.FC = () => {
                                     value={profileData.location}
                                     onChange={handleInputChange}
                                     required
+                                    title="Your current location"
+                                    placeholder="Enter your city and country"
                                 />
                             </div>
                             
