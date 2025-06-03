@@ -20,27 +20,27 @@ console.log('JWT_SECRET environment variable:', process.env.JWT_SECRET);
 // Middleware
 app.use(cors({
   origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if(!origin) return callback(null, true);
+    
+    // List of allowed origins
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:5173',
       'https://localhost:3000',
       'https://localhost:5173',
       'http://192.168.1.8:5173',
-      'http://192.168.1.8:5174',
       'https://expertisestation.com'
     ];
     
-    // Allow requests with no origin (like mobile apps or Postman)
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {  
-      callback(new Error('CORS policy violation: Origin not allowed'));
+    if(allowedOrigins.indexOf(origin) === -1){
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
     }
+    
+    return callback(null, true);
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-  maxAge: 86400 // CORS preflight cache for 24 hours
+  credentials: true
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -56,7 +56,7 @@ app.get('/api/test', (req, res) => {
 const pool = mysql.createPool({
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
+    password: process.env.DB_PASSWORD || 'rohitdogra@23',
     database: 'expertise_station',
     waitForConnections: true,
     connectionLimit: 10,
@@ -173,7 +173,7 @@ app.use((err, req, res, next) => {
     });
 });
 
-const PORT = process.env.PORT || 8081;
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });

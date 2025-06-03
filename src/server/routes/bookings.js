@@ -1,7 +1,7 @@
+
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
-const auth = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -175,7 +175,7 @@ router.get('/seeker/:id', async (req, res) => {
   }
 });
 
-//  Upcoming confirmed bookings for an expert
+// ✅ Upcoming confirmed bookings for an expert
 router.get('/upcoming/:expert_id', async (req, res) => {
   try {
     const { expert_id } = req.params;
@@ -203,7 +203,7 @@ router.get('/upcoming/:expert_id', async (req, res) => {
   }
 });
 
-//  NEW: Upcoming confirmed bookings for a seeker
+// ✅ NEW: Upcoming confirmed bookings for a seeker
 router.get('/upcoming/seeker/:seeker_id', async (req, res) => {
   try {
     const { seeker_id } = req.params;
@@ -231,53 +231,20 @@ router.get('/upcoming/seeker/:seeker_id', async (req, res) => {
   }
 });
 
-// Helper function to check for overlapping bookings
-async function checkOverlappingBookings(pool, expert_id, date, start_time, end_time) {
-  try {
-    // Convert times to comparable format
-    const dbStartTime = convertTo24HourFormat(start_time);
-    const dbEndTime = convertTo24HourFormat(end_time);
-
-    // Query to find any overlapping bookings
-    const [overlappingBookings] = await pool.query(
-      `SELECT * FROM bookings 
-       WHERE expert_id = ? 
-       AND appointment_date = ?
-       AND status IN ('pending', 'confirmed')
-       AND (
-         (start_time <= ? AND end_time > ?) OR  -- New booking starts during existing booking
-         (start_time < ? AND end_time >= ?) OR  -- New booking ends during existing booking
-         (start_time >= ? AND end_time <= ?)    -- New booking is completely within existing booking
-       )`,
-      [expert_id, date, dbStartTime, dbStartTime, dbEndTime, dbEndTime, dbStartTime, dbEndTime]
-    );
-
-    return overlappingBookings.length > 0;
-  } catch (error) {
-    console.error('Error checking overlapping bookings:', error);
-    throw error;
-  }
-}
-
 // Create a new booking
-router.post('/create', auth, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
-    const db = req.app.locals.db;
+    // Get seeker_id from token or request body
+    let seeker_id = getSeekerIdFromToken(req);
+    if (!seeker_id && req.body.seeker_id) {
+      seeker_id = req.body.seeker_id;
+    }
     
-    if (!db) {
-      throw new Error('Database connection not available');
+    if (!seeker_id) {
+      return res.status(401).json({ success: false, message: 'Unauthorized: Invalid or missing token' });
     }
 
-    const {
-      expertId,
-      seekerId,
-      date,
-      startTime,
-      endTime,
-      sessionType,
-      note,
-      amount
-    } = req.body;
+    const { expert_id, date, start_time, end_time, session_type, amount, notes } = req.body;
 
     if (!expert_id || !date || !start_time || !end_time || !session_type) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -334,21 +301,28 @@ router.post('/create', auth, async (req, res) => {
       bookingId
     );
 
-    res.json({
+    res.status(201).json({
       success: true,
+      message: 'Booking created successfully',
       data: {
-        bookingId: result.insertId,
-        message: 'Booking created successfully'
+        id: bookingId,
+        expert_id,
+        expert_name: expertName,
+        seeker_id,
+        seeker_name: seekerName,
+        date,
+        start_time,
+        end_time,
+        session_type,
+        status: 'pending',
+        amount: amount || 0,
+        notes: notes || '',
+        created_at: new Date().toISOString()
       }
     });
-
   } catch (error) {
-    console.error('Booking creation error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create booking',
-      error: error.message
-    });
+    console.error('Error creating booking:', error);
+    res.status(500).json({ success: false, message: 'Failed to create booking' });
   }
 });
 
