@@ -1,6 +1,7 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
+const auth = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -259,36 +260,31 @@ async function checkOverlappingBookings(pool, expert_id, date, start_time, end_t
 }
 
 // Create a new booking
-router.post('/', async (req, res) => {
+router.post('/create', auth, async (req, res) => {
   try {
-    // Get seeker_id from token or request body
-    let seeker_id = getSeekerIdFromToken(req);
-    if (!seeker_id && req.body.seeker_id) {
-      seeker_id = req.body.seeker_id;
-    }
+    const db = req.app.locals.db;
     
-    if (!seeker_id) {
-      return res.status(401).json({ success: false, message: 'Unauthorized: Invalid or missing token' });
+    if (!db) {
+      throw new Error('Database connection not available');
     }
 
-    const { expert_id, date, start_time, end_time, session_type, amount, notes } = req.body;
+    const {
+      expertId,
+      seekerId,
+      date,
+      startTime,
+      endTime,
+      sessionType,
+      note,
+      amount
+    } = req.body;
 
     if (!expert_id || !date || !start_time || !end_time || !session_type) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
-    const pool = req.app.locals.db;
-
-    // Check for overlapping bookings
-    const hasOverlap = await checkOverlappingBookings(pool, expert_id, date, start_time, end_time);
-    if (hasOverlap) {
-      return res.status(409).json({ 
-        success: false, 
-        message: 'This time slot is already booked or pending approval. Please choose a different time.' 
-      });
-    }
-
     const bookingId = uuidv4();
+    const pool = req.app.locals.db;
 
     // Get seeker name for notification
     const [seekerResult] = await pool.query(
@@ -306,7 +302,7 @@ router.post('/', async (req, res) => {
 
     console.log(`Creating booking: seeker=${seeker_id} (${seekerName}), expert=${expert_id} (${expertName})`);
 
-    // Convert time format for database storage
+    // ✅ Convert time format for database storage
     const dbStartTime = convertTo24HourFormat(start_time);
     const dbEndTime = convertTo24HourFormat(end_time);
 
@@ -325,7 +321,7 @@ router.post('/', async (req, res) => {
       pool,
       expert_id,
       'booking',
-      `${seekerName} has request to booked a ${session_type} session with you on ${date} at ${start_time}`,
+      `${seekerName} has booked a ${session_type} session with you on ${date} at ${start_time}`,
       bookingId
     );
 
@@ -338,28 +334,21 @@ router.post('/', async (req, res) => {
       bookingId
     );
 
-    res.status(201).json({
+    res.json({
       success: true,
-      message: 'Booking created successfully',
       data: {
-        id: bookingId,
-        expert_id,
-        expert_name: expertName,
-        seeker_id,
-        seeker_name: seekerName,
-        date,
-        start_time,
-        end_time,
-        session_type,
-        status: 'pending',
-        amount: amount || 0,
-        notes: notes || '',
-        created_at: new Date().toISOString()
+        bookingId: result.insertId,
+        message: 'Booking created successfully'
       }
     });
+
   } catch (error) {
-    console.error('Error creating booking:', error);
-    res.status(500).json({ success: false, message: 'Failed to create booking' });
+    console.error('Booking creation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create booking',
+      error: error.message
+    });
   }
 });
 

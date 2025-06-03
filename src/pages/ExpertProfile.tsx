@@ -728,7 +728,7 @@ const ExpertProfileContent = () => {
                       {expert?.first_name} {expert?.last_name}
                     </h1>
                     <h3 className="text-xl font-semibold mb-2 text-foreground">About</h3>
-                    <p className="mb-2">{expert?.last_name}With {expert?.work_experience} years of experience in {expert?.expertise}, 
+                    <p className="mb-2">{expert?.last_name} With {expert?.work_experience} years of experience in {expert?.expertise}, 
                       I specialize in providing expert guidance in {expert?.areas_of_help}.</p>
                     <h3 className="text-xl font-semibold mb-2 text-foreground">Organization and Location</h3>
                     <p> {expert?.current_organization} , {expert?.location}.</p>
@@ -884,7 +884,7 @@ const ExpertProfileContent = () => {
                                   <span className="text-primary font-medium">
                                     {startTimeFormatted} - {endTimeFormatted}
                                   </span>
-                                </Button>
+                                </Button> 
                               );
                             })}
                           </div>
@@ -978,6 +978,7 @@ const ExpertProfileContent = () => {
                 name="sessionType"
                 value={bookingForm.sessionType}
                 onChange={handleBookingFormChange}
+                aria-label="Session Type"
                 className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <option value="video">Video Call (${expert?.video_pricing}/hr)</option>

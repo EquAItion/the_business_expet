@@ -8,9 +8,8 @@ import ProfileSection from './ProfileSection';
 import AvailabilitySection from './AvailabilitySection';
 import ActivityMeetingsSection from './ActivityMeetingsSection';
 import PricingCard from './PricingCard';
-import { Pencil } from 'lucide-react';
+import { Pencil, User, Calendar } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Calendar } from 'lucide-react';
 
 interface ExpertProfile {
   first_name: string;
@@ -35,6 +34,16 @@ interface EditingState {
   personal: boolean;
   contact: boolean;
   pricing: boolean;
+}
+
+interface ProfileSectionProps {
+  profile: ExpertProfile;
+  editedProfile: ExpertProfile | null;
+  isEditing: EditingState;
+  onEdit: (section: keyof EditingState) => void;
+  onUpdateField: (field: keyof ExpertProfile, value: string) => void;
+  expertId: string | null;
+  onProfileUpdated: () => Promise<void>;
 }
 
 const ExpertDashboard: React.FC = () => {
@@ -261,65 +270,117 @@ const ExpertDashboard: React.FC = () => {
     );
   }
 
+  // Update the profile section render code
   return (
     <>
       <Navbar />
-      <h1 className="text-2xl text-center font-bold mt-20 mb-0">
-        Welcome, {profile.first_name} <span className="text-primary">{profile.last_name}</span>
-      </h1>
-      <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Profile Section */}
-          <Card className="md:col-span-2">
-            <div className="card-header">
-              <h2 className="card-title">Expert Profile & Management</h2>
+      <div className="bg-gray-50 min-h-screen pt-20">
+        {/* Main Content Grid */}
+        <div className="container mx-auto px-4 py-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Left Column - Profile */}
+            <div>
+              <Card className="min-h-[400px]"> {/* Set minimum height */}
+                <div className="p-4 h-full flex flex-col">
+                  {/* Header with Avatar */}
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      {profile.first_name ? (
+                        <span className="text-lg font-semibold text-primary">
+                          {`${profile.first_name[0]}${profile.last_name?.[0] || ''}`}
+                        </span>
+                      ) : (
+                        <User className="h-6 w-6 text-primary/60" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h1 className="text-base font-medium text-gray-900">
+                        {profile.first_name} {profile.last_name}
+                      </h1>
+                      <p className="text-sm text-gray-600">{profile.designation}</p>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleEdit('personal')}
+                      className="h-8 px-2 text-xs"
+                    >
+                      <Pencil className="h-3 w-3 mr-1" />
+                      <span>Edit</span>
+                    </Button>
+                  </div>
+
+                  {/* Profile Details with flex-grow to push content apart */}
+                  <div className="flex-grow space-y-3 text-sm divide-y divide-gray-100">
+                    {[
+                      { label: 'Expertise', value: profile.expertise },
+                      { label: 'Experience', value: `${profile.work_experience} yrs` },
+                      { label: 'Email', value: profile.email },
+                      { label: 'Phone', value: profile.phone_number },
+                      { label: 'Areas of Help', value: profile.areas_of_help }
+                    ].map((item, index) => (
+                      <div key={index} className="flex justify-between items-center py-2">
+                        <span className="text-gray-500">{item.label}</span>
+                        <span className="text-gray-900 truncate ml-2 max-w-[60%]" title={item.value}>
+                          {item.value || '-'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Card>
             </div>
-            <div className="card-content">
-              <ProfileSection
-                profile={profile}
-                editedProfile={editedProfile}
-                isEditing={isEditing}
-                onEdit={handleEdit}
-                onUpdateField={handleUpdateField}
-                expertId={expertId}
-                onProfileUpdated={refreshProfile}
-              />
+
+            {/* Middle Column - Pricing */}
+            <div>
+              <Card className="min-h-[400px]">
+                <div className="p-4 h-full">
+                  <PricingCard 
+                    videoPricing={profile.video_pricing} 
+                    audioPricing={profile.audio_pricing} 
+                    chatPricing={profile.chat_pricing}
+                    expertId={expertId} 
+                    onPricingUpdated={refreshPricingData}
+                  />
+                </div>
+              </Card>
             </div>
-          </Card>
 
-          {/* Availability Section */}
-          <AvailabilitySection
-            selectedDay={selectedDay}
-            setSelectedDay={setSelectedDay}
-            startTime={startTime}
-            endTime={endTime}
-            onTimeChange={handleTimeChange}
-            onUpdateAvailability={() => {
-              // This is called after a successful update
-              // You could refresh other data if needed
-              toast({
-                title: "Success",
-                description: "Your availability has been updated",
-              });
-            }}
-            WEEKDAYS={WEEKDAYS}
-            TIME_OPTIONS={TIME_OPTIONS}
-          />
+            {/* Right Column - Activity & Meetings */}
+            <div>
+              <Card className="min-h-[400px]">
+                <div className="p-4 h-full">
+                  <ActivityMeetingsSection
+                    recentActivity={recentActivity}
+                    meetings={meetings}
+                  />
+                </div>
+              </Card>
+            </div>
+          </div>
 
-          {/* Pricing Card Section */}
-          <PricingCard 
-            videoPricing={profile.video_pricing} 
-            audioPricing={profile.audio_pricing} 
-            chatPricing={profile.chat_pricing}
-            expertId={expertId} 
-            onPricingUpdated={refreshPricingData}
-          />
-
-          {/* Activity & Meetings Section */}
-          <ActivityMeetingsSection
-            recentActivity={recentActivity}
-            meetings={meetings}
-          />
+          {/* Availability Section Below */}
+          <div className="mt-6">
+            <Card>
+              <div className="p-4">
+                <AvailabilitySection
+                  selectedDay={selectedDay}
+                  setSelectedDay={setSelectedDay}
+                  startTime={startTime}
+                  endTime={endTime}
+                  onTimeChange={handleTimeChange}
+                  onUpdateAvailability={() => {
+                    toast({
+                      title: "Success",
+                      description: "Your availability has been updated",
+                    });
+                  }}
+                  WEEKDAYS={WEEKDAYS}
+                  TIME_OPTIONS={TIME_OPTIONS}
+                />
+              </div>
+            </Card>
+          </div>
         </div>
       </div>
       <Footer />
