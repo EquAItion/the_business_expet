@@ -106,20 +106,33 @@ const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
         
         setIsJoined(true);
         
-        // Create local tracks
-        const tracks = await AgoraRTC.createMicrophoneAndCameraTracks();
+        // Create local tracks based on session type
+        let tracks;
+        if (sessionType === 'audio') {
+          // For audio-only sessions, only create microphone track
+          const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+          tracks = [audioTrack, null] as [IMicrophoneAudioTrack, ICameraVideoTrack];
+        } else {
+          // For video sessions, create both audio and video tracks
+          tracks = await AgoraRTC.createMicrophoneAndCameraTracks();
+        }
+        
         console.log('Local tracks created:', tracks);
         
-        // Publish local tracks
-        await rtcClient.current.publish(tracks);
+        // Publish only the audio track for audio sessions
+        if (sessionType === 'audio') {
+          await rtcClient.current.publish([tracks[0]]);
+        } else {
+          await rtcClient.current.publish(tracks);
+        }
         
-        // Set local tracks state - this will trigger the useEffect below
+        // Set local tracks state
         setLocalTracks(tracks);
         
         setIsLoading(false);
       } catch (err) {
         console.error('Error initializing Agora:', err);
-        setError(err.message || 'Failed to join video call');
+        setError(err.message || 'Failed to join call');
         setIsLoading(false);
       }
     };
@@ -130,12 +143,14 @@ const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
       // Clean up when component unmounts
       if (localTracks) {
         localTracks[0].close();
-        localTracks[1].close();
+        if (localTracks[1]) {
+          localTracks[1].close();
+        }
       }
       
       rtcClient.current?.leave();
     };
-  }, [channelName, token, uid]);
+  }, [channelName, token, uid, sessionType]);
   
   // This effect will try to play the video if localTracks are set but video isn't playing yet
   useEffect(() => {
@@ -174,7 +189,9 @@ const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
   const leaveCall = async () => {
     if (localTracks) {
       localTracks[0].close();
-      localTracks[1].close();
+      if (localTracks[1]) {
+        localTracks[1].close();
+      }
     }
     
     await rtcClient.current?.leave();
@@ -202,32 +219,50 @@ const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 relative">
-        {/* Remote videos */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full p-4">
-          {remoteUsers.length > 0 ? (
-            remoteUsers.map(user => (
-              <div 
-                key={user.uid} 
-                className="bg-black rounded-lg overflow-hidden h-full"
-                ref={el => {
-                  if (el && user.videoTrack) {
-                    user.videoTrack.play(el);
-                  }
-                }}
-              />
-            ))
-          ) : (
-            <div className="flex items-center justify-center h-full col-span-full">
-              <p className="text-gray-500">Waiting for others to join...</p>
+        {sessionType === 'video' ? (
+          // Video session layout
+          <>
+            {/* Remote videos */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full p-4">
+              {remoteUsers.length > 0 ? (
+                remoteUsers.map(user => (
+                  <div 
+                    key={user.uid} 
+                    className="bg-black rounded-lg overflow-hidden h-full"
+                    ref={el => {
+                      if (el && user.videoTrack) {
+                        user.videoTrack.play(el);
+                      }
+                    }}
+                  />
+                ))
+              ) : (
+                <div className="flex items-center justify-center h-full col-span-full">
+                  <p className="text-gray-500">Waiting for others to join...</p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        
-        {/* Local video (small overlay) */}
-        <div 
-          ref={setLocalVideoRef}
-          className={`absolute ${isMobile ? 'bottom-20' : 'bottom-4'} right-4 w-48 h-36 bg-black rounded-lg overflow-hidden border-2 border-white shadow-lg`}
-        />
+            
+            {/* Local video (small overlay) */}
+            <div 
+              ref={setLocalVideoRef}
+              className={`absolute ${isMobile ? 'bottom-20' : 'bottom-4'} right-4 w-48 h-36 bg-black rounded-lg overflow-hidden border-2 border-white shadow-lg`}
+            />
+          </>
+        ) : (
+          // Audio session layout
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center space-y-4">
+              <div className="w-32 h-32 mx-auto bg-primary/10 rounded-full flex items-center justify-center">
+                <Mic className="w-16 h-16 text-primary" />
+              </div>
+              <p className="text-lg font-medium">Audio Session</p>
+              <p className="text-sm text-muted-foreground">
+                {remoteUsers.length > 0 ? 'Connected' : 'Waiting for others to join...'}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Controls */}
@@ -240,13 +275,15 @@ const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
           {isAudioMuted ? <MicOff /> : <Mic />}
         </Button>
         
-        <Button 
-          variant={isVideoMuted ? "destructive" : "default"}
-          size="icon"
-          onClick={toggleVideo}
-        >
-          {isVideoMuted ? <VideoOff /> : <Video />}
-        </Button>
+        {sessionType === 'video' && (
+          <Button 
+            variant={isVideoMuted ? "destructive" : "default"}
+            size="icon"
+            onClick={toggleVideo}
+          >
+            {isVideoMuted ? <VideoOff /> : <Video />}
+          </Button>
+        )}
         
         <Button 
           variant="destructive"

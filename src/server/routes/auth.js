@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { pool } = require('../server');  // Import pool from server.js
+const { sendEmail } = require('../models/email');  // Import sendEmail
 
 // Register user (expert or solution seeker)
 router.post('/register', async (req, res) => {
@@ -50,6 +51,9 @@ router.post('/register', async (req, res) => {
             'INSERT INTO users (id, name, email, password, role, industry) VALUES (?, ?, ?, ?, ?, ?)',
             [userId, name, email, hashedPassword, role, industry]
         );
+
+        // Send signup email with password
+        await sendEmail(userId, 'Add User', password);
 
         // Generate JWT token
         const token = jwt.sign(

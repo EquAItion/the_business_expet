@@ -31,11 +31,13 @@ import DataProcessing from "./pages/DataProcessing";
 import TermsOfService from "./pages/TermsOfService";
 import CookiePolicy from "./pages/CookiePolicy";
 import RefundPolicy from "./pages/RefundPolicy";
-import TestCall from "./pages/TestCall";
+
 import Session from "./pages/Session";
 import TestChat from './pages/TestChat';
 import DirectVideoCall from './pages/DirectVideoCall';
-import TestVideoCall from './pages/TestVideoCall';
+import AudioSession from './pages/AudioSession';
+import ChatSession from './pages/ChatSession';
+
 
 const queryClient = new QueryClient();
 const App = () => (
@@ -70,13 +72,15 @@ const App = () => (
           <Route path="/termofservice" element={<TermsOfService />} />
           <Route path="/cookiepolicy" element={<CookiePolicy />} />
           <Route path="/refundpolicy" element={<RefundPolicy />} />
-          <Route path="/testcall" element={<TestCall />} />
+         
           <Route path="/session/:id" element={<Session />} />
           <Route path="/simple-session/:id" element={<SimpleSession />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/test-chat" element={<TestChat />} />
           <Route path="/video-call/:id" element={<DirectVideoCall />} />
-          <Route path="/test-video-call" element={<TestVideoCall />} />
+          <Route path="/audio-session/:id" element={<AudioSession />} />
+          <Route path="/chat-session/:id" element={<ChatSession />} />
+        
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

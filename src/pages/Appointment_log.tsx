@@ -16,7 +16,8 @@ import {
   Calendar as CalendarIcon,
   Check, 
   X, 
-  CalendarClock 
+  CalendarClock,
+  Mic
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Button } from "../components/ui/button";
@@ -59,6 +60,8 @@ interface UserProfile {
   industry?: string;
 }
 
+type UserType = 'expert' | 'seeker';
+
 const capitalizeFirstLetter = (str: string) => {
   if (!str) return '';
   return str.charAt(0).toUpperCase() + str.slice(1);
@@ -67,7 +70,7 @@ const capitalizeFirstLetter = (str: string) => {
 const AppointmentLog = () => {
   const [seekerBookings, setSeekerBookings] = useState<Booking[]>([]);
   const [expertBookings, setExpertBookings] = useState<Booking[]>([]);
-  const [userType, setUserType] = useState<'seeker' | 'expert' | null>(null);
+  const [userType, setUserType] = useState<UserType>('seeker');
   const [userId, setUserId] = useState<string | null>(null);
   const [loadingSeeker, setLoadingSeeker] = useState(false);
   const [loadingExpert, setLoadingExpert] = useState(false);
@@ -158,27 +161,39 @@ const AppointmentLog = () => {
     return [];
   };
 
+  // Helper to check if session started within last 20 minutes
+  const isWithinTwentyMinutesAfterStart = (dateStr: string, startTimeStr: string): boolean => {
+    const now = new Date();
+    const sessionStart = parseDateTime(dateStr, startTimeStr);
+    const twentyMinutesAfter = new Date(sessionStart.getTime() + 20 * 60 * 1000);
+    return now >= sessionStart && now <= twentyMinutesAfter;
+  };
+
   // Get upcoming count for badge
   const getUpcomingCount = () => {
     const bookings = userType === 'seeker' ? seekerBookings : expertBookings;
+    const now = new Date();
+    const nowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds()));
     return bookings.filter(booking => {
-      const bookingDate = new Date(booking.date + 'T' + booking.end_time.replace(/\s?[AP]M/, ''));
-      const now = new Date();
-      return bookingDate >= now && 
-             (booking.status === 'confirmed' || booking.status === 'pending');
+      const dateOnly = booking.date.split('T')[0];
+      const bookingEnd = parseDateTime(dateOnly, booking.end_time);
+      const bookingStart = parseDateTime(dateOnly, booking.start_time);
+      const bookingEndUtc = new Date(Date.UTC(bookingEnd.getUTCFullYear(), bookingEnd.getUTCMonth(), bookingEnd.getUTCDate(), bookingEnd.getUTCHours(), bookingEnd.getUTCMinutes(), bookingEnd.getUTCSeconds()));
+      const bookingStartUtc = new Date(Date.UTC(bookingStart.getUTCFullYear(), bookingStart.getUTCMonth(), bookingStart.getUTCDate(), bookingStart.getUTCHours(), bookingStart.getUTCMinutes(), bookingStart.getUTCSeconds()));
+      console.log("getUpcomingCount - status:", booking.status, "bookingEndUtc:", bookingEndUtc, "bookingStartUtc:", bookingStartUtc, "nowUtc:", nowUtc);
+      return (booking.status === 'confirmed' || booking.status === 'pending') &&
+             (bookingEndUtc >= nowUtc || isWithinTwentyMinutesAfterStart(dateOnly, booking.start_time));
     }).length;
   };
 
   // Get past count for badge
   const getPastCount = () => {
     const bookings = userType === 'seeker' ? seekerBookings : expertBookings;
+    const now = new Date();
     return bookings.filter(booking => {
-      const bookingDate = new Date(booking.date + 'T' + booking.end_time.replace(/\s?[AP]M/, ''));
-      const now = new Date();
-      return bookingDate < now || 
-             booking.status === 'completed' || 
-             booking.status === 'rejected' || 
-             booking.status === 'cancelled';
+      const dateOnly = booking.date.split('T')[0];
+      const bookingEnd = parseDateTime(dateOnly, booking.end_time);
+      return bookingEnd < now || booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled';
     }).length;
   };
 
@@ -380,12 +395,12 @@ const AppointmentLog = () => {
           }
         } else {
           setUserId(null);
-          setUserType(null);
+          setUserType('seeker');
         }
       } catch (e) {
         console.error("Error parsing user data:", e);
         setUserId(null);
-        setUserType(null);
+        setUserType('seeker');
       }
     };
 
@@ -623,67 +638,92 @@ const AppointmentLog = () => {
     const sessionCompleted = isSessionCompleted(booking.date, booking.end_time);
     const canJoinSession = !sessionCompleted && (isWithinFiveMinutesBeforeStart(booking.date, booking.start_time) || new Date() >= new Date(`${booking.date}T${booking.start_time}`));
 
+    const handleJoinSession = async () => {
+      try {
+        // For video and audio sessions, request media permissions
+        if (booking.session_type === 'video' || booking.session_type === 'audio') {
+          await navigator.mediaDevices.getUserMedia({ 
+            video: booking.session_type === 'video',
+            audio: true 
+          });
+        }
+
+        // Navigate to the appropriate session page based on session type
+        switch (booking.session_type) {
+          case 'video':
+            navigate(`/video-call/${booking.id}`);
+            break;
+          case 'audio':
+            navigate(`/audio-session/${booking.id}`);
+            break;
+          case 'chat':
+            navigate(`/chat-session/${booking.id}`);
+            break;
+          default:
+            toast({
+              title: "Error",
+              description: "Invalid session type",
+              variant: "destructive",
+            });
+        }
+      } catch (err) {
+        toast({
+          title: "Permission Denied",
+          description: booking.session_type === 'chat' 
+            ? "Failed to join chat session"
+            : "Please allow camera and microphone access to join the session.",
+          variant: "destructive",
+        });
+      }
+    };
+
     return (
-      <Card key={booking.id} className="overflow-hidden hover:shadow-md transition-shadow">
+      <Card key={booking.id} className="overflow-hidden">
         <CardHeader className="pb-2">
-          <div className="flex justify-between items-start">
+          <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <Avatar className="h-10 w-10">
-                <AvatarImage src={otherUser?.profile_image} />
-                <AvatarFallback className="bg-primary/10">
-                  {getInitials(otherUserName || '')}
-                </AvatarFallback>
+              <Avatar>
+                <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${otherUserName}`} />
+                <AvatarFallback>{getInitials(otherUserName)}</AvatarFallback>
               </Avatar>
               <div>
-                <CardTitle className="text-lg font-semibold">
-                  {otherUserName || `${otherUser?.first_name || ''} ${otherUser?.last_name || ''}`}
-                </CardTitle>
-                <CardDescription className="text-sm">
-                  {isViewingAsSeeker
-                    ? (otherUser?.specialty || 'Expert')
-                    : (otherUser?.company || 'Client')}
+                <CardTitle className="text-base">{otherUserName}</CardTitle>
+                <CardDescription>
+                  {formatDate(booking.date)} at {booking.start_time}
                 </CardDescription>
               </div>
             </div>
-            {getStatusBadge(booking.status)}
+            <Badge variant={
+              booking.status === 'confirmed' ? 'default' :
+              booking.status === 'pending' ? 'secondary' :
+              booking.status === 'rejected' ? 'destructive' :
+              booking.status === 'completed' ? 'outline' :
+              'secondary'
+            }>
+              {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+            </Badge>
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-3">
-          <div className="flex items-center text-sm text-muted-foreground">
-            <CalendarIcon className="h-4 w-4 mr-2" />
-            <span className="font-medium">{formatDate(booking.date)}</span>
-            {new Date(booking.date) > new Date() && (
-              <Badge variant="outline" className="ml-2 bg-blue-50 text-blue-700 text-xs">
-                {getTimeUntil(booking.date)}
-              </Badge>
-            )}
-          </div>
-
-          <div className="flex items-center text-sm text-muted-foreground">
-            <Clock className="h-4 w-4 mr-2" />
-            <span>{booking.start_time} - {booking.end_time}</span>
-          </div>
-
-          <div className="flex items-center text-sm text-muted-foreground">
-            <div className="flex items-center mr-2">
-              {getSessionTypeIcon(booking.session_type)}
+        <CardContent className="pb-2">
+          <div className="space-y-2">
+            <div className="flex items-center text-sm text-muted-foreground">
+              {booking.session_type === 'video' && <Video className="h-4 w-4 mr-2" />}
+              {booking.session_type === 'audio' && <Mic className="h-4 w-4 mr-2" />}
+              {booking.session_type === 'chat' && <MessageSquare className="h-4 w-4 mr-2" />}
+              {booking.session_type.charAt(0).toUpperCase() + booking.session_type.slice(1)} Session
             </div>
-            <span className="capitalize">{booking.session_type} Session</span>
+            <div className="flex items-center text-sm text-muted-foreground">
+              <Clock className="h-4 w-4 mr-2" />
+              {booking.start_time} - {booking.end_time}
+            </div>
+            <div className="flex items-center text-sm text-muted-foreground">
+              <MapPin className="h-4 w-4 mr-2" />
+              {booking.session_type === 'video' ? 'Video Call' : 
+               booking.session_type === 'audio' ? 'Audio Call' : 
+               'Chat Session'}
+            </div>
           </div>
-
-          {isAmountPositive(booking.amount) && (
-            <div className="text-sm font-semibold text-green-700">
-              Amount: ${formatAmount(booking.amount)}
-            </div>
-          )}
-
-          {booking.notes && (
-            <div className="text-sm mt-2 pt-2 border-t border-gray-100">
-              <p className="text-muted-foreground mb-1 font-medium">Notes:</p>
-              <p className="text-gray-700">{booking.notes}</p>
-            </div>
-          )}
         </CardContent>
 
         <CardFooter className="pt-2 border-t bg-gray-50/50">
@@ -702,77 +742,66 @@ const AppointmentLog = () => {
                 <Button
                   size="sm"
                   className="w-full"
-                  onClick={async () => {
-                    try {
-                      await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                      navigate(`/session/${booking.id}`);
-                    } catch (err) {
-                      toast({
-                        title: "Permission Denied",
-                        description: "Please allow camera and microphone access to join the session.",
-                        variant: "destructive",
-                      });
-                    }
-                  }}
+                  onClick={handleJoinSession}
                 >
-                  <Video className="h-4 w-4 mr-2" />
-                  Join Session
+                  {booking.session_type === 'video' && <Video className="h-4 w-4 mr-2" />}
+                  {booking.session_type === 'audio' && <Mic className="h-4 w-4 mr-2" />}
+                  {booking.session_type === 'chat' && <MessageSquare className="h-4 w-4 mr-2" />}
+                  Join {booking.session_type.charAt(0).toUpperCase() + booking.session_type.slice(1)} Session
                 </Button>
               )}
             </div>
           ) : (
             <div className="w-full space-y-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full"
+                onClick={() => navigate(`/seekers/${booking.seeker_id}`)}
+              >
+                <User className="h-4 w-4 mr-2" />
+                View Seeker Profile
+              </Button>
               {booking.status === 'pending' && (
-                <div className="flex space-x-2">
-                  <Button
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => handleAcceptBooking(booking.id)}
-                  >
-                    <Check className="h-4 w-4 mr-1" />
-                    Accept
-                  </Button>
+                <div className="grid grid-cols-3 gap-2">
                   <Button
                     size="sm"
                     variant="outline"
-                    className="flex-1"
+                    className="w-full"
+                    onClick={() => openRescheduleDialog(booking.id, booking.date)}
+                  >
+                    <CalendarClock className="h-4 w-4 mr-2" />
+                    Reschedule
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="w-full"
                     onClick={() => handleRejectBooking(booking.id)}
                   >
-                    <X className="h-4 w-4 mr-1" />
-                    Decline
+                    <X className="h-4 w-4 mr-2" />
+                    Reject
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={() => handleAcceptBooking(booking.id)}
+                  >
+                    <Check className="h-4 w-4 mr-2" />
+                    Accept
                   </Button>
                 </div>
-              )}
-              {(booking.status === 'confirmed' || booking.status === 'pending') && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => openRescheduleDialog(booking.id, booking.date)}
-                >
-                  <CalendarClock className="h-4 w-4 mr-1" />
-                  Reschedule
-                </Button>
               )}
               {booking.status === 'confirmed' && (
                 <Button
                   size="sm"
-                  className="w-full mt-2"
-                  onClick={async () => {
-                    try {
-                      await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                      navigate(`/video-call/${booking.id}`);
-                    } catch (err) {
-                      toast({
-                        title: "Permission Denied",
-                        description: "Please allow camera and microphone access to start the session.",
-                        variant: "destructive",
-                      });
-                    }
-                  }}
+                  className="w-full"
+                  onClick={handleJoinSession}
                 >
-                  <Video className="h-4 w-4 mr-2" />
-                  Start Session
+                  {booking.session_type === 'video' && <Video className="h-4 w-4 mr-2" />}
+                  {booking.session_type === 'audio' && <Mic className="h-4 w-4 mr-2" />}
+                  {booking.session_type === 'chat' && <MessageSquare className="h-4 w-4 mr-2" />}
+                  Start {booking.session_type.charAt(0).toUpperCase() + booking.session_type.slice(1)} Session
                 </Button>
               )}
             </div>
@@ -883,10 +912,17 @@ const AppointmentLog = () => {
             {/* Upcoming Appointments Tab */}
             <TabsContent value="upcoming" className="space-y-4">
               {bookings.filter(booking => {
-                const bookingDate = new Date(booking.date + 'T' + booking.end_time.replace(/\s?[AP]M/, ''));
+                const dateOnly = booking.date.split('T')[0];
+                const bookingEnd = parseDateTime(dateOnly, booking.end_time);
+                const bookingStart = parseDateTime(dateOnly, booking.start_time);
                 const now = new Date();
-                return bookingDate >= now && 
-                       (booking.status === 'confirmed' || booking.status === 'pending');
+                const nowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds()));
+                const bookingEndUtc = new Date(Date.UTC(bookingEnd.getUTCFullYear(), bookingEnd.getUTCMonth(), bookingEnd.getUTCDate(), bookingEnd.getUTCHours(), bookingEnd.getUTCMinutes(), bookingEnd.getUTCSeconds()));
+                const bookingStartUtc = new Date(Date.UTC(bookingStart.getUTCFullYear(), bookingStart.getUTCMonth(), bookingStart.getUTCDate(), bookingStart.getUTCHours(), bookingStart.getUTCMinutes(), bookingStart.getUTCSeconds()));
+                console.log("Upcoming filter - booking.date:", booking.date, "end_time:", booking.end_time, "bookingEndUtc:", bookingEndUtc, "nowUtc:", nowUtc);
+                console.log("Upcoming filter - status:", booking.status, "bookingStartUtc:", bookingStartUtc, "nowUtc:", nowUtc);
+                return (booking.status === 'pending' || booking.status === 'confirmed') &&
+                       (bookingEndUtc >= nowUtc || isWithinTwentyMinutesAfterStart(dateOnly, booking.start_time));
               }).length === 0 ? (
                 <Card className="text-center py-12">
                   <CardContent>
@@ -906,10 +942,17 @@ const AppointmentLog = () => {
                 <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
                     .filter(booking => {
-                      const bookingDate = new Date(booking.date + 'T' + booking.end_time.replace(/\s?[AP]M/, ''));
+                      const dateOnly = booking.date.split('T')[0];
+                      const bookingEnd = parseDateTime(dateOnly, booking.end_time);
+                      const bookingStart = parseDateTime(dateOnly, booking.start_time);
                       const now = new Date();
-                      return bookingDate >= now && 
-                             (booking.status === 'confirmed' || booking.status === 'pending');
+                      const nowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds()));
+                      const bookingEndUtc = new Date(Date.UTC(bookingEnd.getUTCFullYear(), bookingEnd.getUTCMonth(), bookingEnd.getUTCDate(), bookingEnd.getUTCHours(), bookingEnd.getUTCMinutes(), bookingEnd.getUTCSeconds()));
+                      const bookingStartUtc = new Date(Date.UTC(bookingStart.getUTCFullYear(), bookingStart.getUTCMonth(), bookingStart.getUTCDate(), bookingStart.getUTCHours(), bookingStart.getUTCMinutes(), bookingStart.getUTCSeconds()));
+                      console.log("Upcoming filter inside map - booking.date:", booking.date, "end_time:", booking.end_time, "bookingEndUtc:", bookingEndUtc, "nowUtc:", nowUtc);
+                      console.log("Upcoming filter inside map - status:", booking.status, "bookingStartUtc:", bookingStartUtc, "nowUtc:", nowUtc);
+                      return (booking.status === 'pending' || booking.status === 'confirmed') &&
+                             (bookingEndUtc >= nowUtc || isWithinTwentyMinutesAfterStart(dateOnly, booking.start_time));
                     })
                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                     .map(renderBookingCard)}
@@ -920,12 +963,9 @@ const AppointmentLog = () => {
             {/* Past Appointments Tab */}
             <TabsContent value="past" className="space-y-4">
               {bookings.filter(booking => {
-                const bookingDate = new Date(booking.date + 'T' + booking.end_time.replace(/\s?[AP]M/, ''));
+                const bookingEnd = parseDateTime(booking.date, booking.end_time);
                 const now = new Date();
-                return bookingDate < now || 
-                       booking.status === 'completed' || 
-                       booking.status === 'rejected' || 
-                       booking.status === 'cancelled';
+                return bookingEnd < now || booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled';
               }).length === 0 ? (
                 <Card className="text-center py-12">
                   <CardContent>
@@ -938,12 +978,9 @@ const AppointmentLog = () => {
                 <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
                     .filter(booking => {
-                      const bookingDate = new Date(booking.date + 'T' + booking.end_time.replace(/\s?[AP]M/, ''));
+                      const bookingEnd = parseDateTime(booking.date, booking.end_time);
                       const now = new Date();
-                      return bookingDate < now || 
-                             booking.status === 'completed' || 
-                             booking.status === 'rejected' || 
-                             booking.status === 'cancelled';
+                      return bookingEnd < now || booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled';
                     })
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                     .map(renderBookingCard)}
@@ -969,7 +1006,11 @@ const AppointmentLog = () => {
                   {uniqueContacts.map(contact => {
                     const contactBookings = getBookingsWithContact(contact.id);
                     const lastBooking = contactBookings.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-                    const upcomingCount = contactBookings.filter(b => new Date(b.date) > new Date() && (b.status === 'confirmed' || b.status === 'pending')).length;
+                    const upcomingCount = contactBookings.filter(b => {
+                      const bookingEnd = parseDateTime(b.date, b.end_time);
+                      const now = new Date();
+                      return bookingEnd > now && (b.status === 'confirmed' || b.status === 'pending');
+                    }).length;
                     const completedCount = contactBookings.filter(b => b.status === 'completed').length;
                     const totalCount = contactBookings.length;
                     
@@ -1162,6 +1203,28 @@ const AppointmentLog = () => {
     </div>
   );
 };
+
+function parseDateTime(date: string, time: string) {
+  // Handles ISO date string with time and timezone, and "HH:mm AM/PM" or "HH:mm" 24-hour format time string
+  if (!date || !time) return new Date(date);
+  const baseDate = new Date(date); // parse full ISO date string with timezone
+  if (isNaN(baseDate.getTime())) return new Date(date); // fallback if invalid date
+  let hours = 0;
+  let minutes = 0;
+  const timeParts = time.trim().split(' ');
+  if (timeParts.length === 2) {
+    // 12-hour format with AM/PM
+    const [rawTime, modifier] = timeParts;
+    [hours, minutes] = rawTime.split(':').map(Number);
+    if (modifier.toLowerCase() === 'pm' && hours < 12) hours += 12;
+    if (modifier.toLowerCase() === 'am' && hours === 12) hours = 0;
+  } else {
+    // 24-hour format without AM/PM
+    [hours, minutes] = time.split(':').map(Number);
+  }
+  baseDate.setHours(hours, minutes, 0, 0);
+  return baseDate;
+}
 
 export default AppointmentLog;
 

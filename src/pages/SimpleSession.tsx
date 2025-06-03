@@ -64,7 +64,7 @@ const SimpleSession = () => {
   };
 
   const handleEndCall = () => {
-    navigate('/appointments');
+    navigate('/appointment-log');
   };
 
   if (loading) {
@@ -83,7 +83,7 @@ const SimpleSession = () => {
             <div className="text-center">
               <h2 className="text-2xl font-bold text-red-600 mb-4">Error</h2>
               <p className="mb-4">{error}</p>
-              <Button onClick={() => navigate('/appointments')}>
+              <Button onClick={() => navigate('/appointment-log')}>
                 Back to Appointments
               </Button>
             </div>
