@@ -1,4 +1,3 @@
-
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
@@ -250,8 +249,35 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
-    const bookingId = uuidv4();
     const pool = req.app.locals.db;
+
+    // Convert time format for database storage
+    const dbStartTime = convertTo24HourFormat(start_time);
+    const dbEndTime = convertTo24HourFormat(end_time);
+
+    // Check for overlapping bookings
+    const [overlappingBookings] = await pool.query(
+      `SELECT * FROM bookings 
+       WHERE expert_id = ? 
+       AND appointment_date = ?
+       AND status IN ('pending', 'confirmed')
+       AND (
+         (start_time <= ? AND end_time > ?) OR
+         (start_time < ? AND end_time >= ?) OR
+         (? <= start_time AND ? >= end_time)
+       )`,
+      [expert_id, date, dbStartTime, dbStartTime, dbEndTime, dbEndTime, dbStartTime, dbEndTime]
+    );
+
+    if (overlappingBookings.length > 0) {
+      const overlappingBooking = overlappingBookings[0];
+      return res.status(409).json({
+        success: false,
+        message: `This time slot overlaps with an existing ${overlappingBooking.session_type} session (${overlappingBooking.start_time} - ${overlappingBooking.end_time})`
+      });
+    }
+
+    const bookingId = uuidv4();
 
     // Get seeker name for notification
     const [seekerResult] = await pool.query(
@@ -268,10 +294,6 @@ router.post('/', async (req, res) => {
     const expertName = expertResult.length > 0 ? expertResult[0].name : 'Expert';
 
     console.log(`Creating booking: seeker=${seeker_id} (${seekerName}), expert=${expert_id} (${expertName})`);
-
-    // ✅ Convert time format for database storage
-    const dbStartTime = convertTo24HourFormat(start_time);
-    const dbEndTime = convertTo24HourFormat(end_time);
 
     // Insert booking with all required fields
     await pool.query(

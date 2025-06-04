@@ -44,6 +44,7 @@ interface Booking {
   amount: number | string;
   created_at: string;
   notes?: string;
+  is_read?: boolean;
 }
 
 interface UserProfile {
@@ -61,6 +62,20 @@ interface UserProfile {
 }
 
 type UserType = 'expert' | 'seeker';
+
+type NotificationType = 'booking_request' | 'booking_confirmed' | 'booking_rejected' | 'session_reminder' | 'session_cancelled' | 'session_rescheduled' | 'new_message';
+
+interface NotificationData {
+  type: NotificationType;
+  session_type: string;
+  session_time?: string;
+  date?: string;
+  expert_name?: string;
+  seeker_name?: string;
+  booking_id?: string;
+  sender_name?: string;
+  message_preview?: string;
+}
 
 const capitalizeFirstLetter = (str: string) => {
   if (!str) return '';
@@ -172,18 +187,7 @@ const AppointmentLog = () => {
   // Get upcoming count for badge
   const getUpcomingCount = () => {
     const bookings = userType === 'seeker' ? seekerBookings : expertBookings;
-    const now = new Date();
-    const nowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds()));
-    return bookings.filter(booking => {
-      const dateOnly = booking.date.split('T')[0];
-      const bookingEnd = parseDateTime(dateOnly, booking.end_time);
-      const bookingStart = parseDateTime(dateOnly, booking.start_time);
-      const bookingEndUtc = new Date(Date.UTC(bookingEnd.getUTCFullYear(), bookingEnd.getUTCMonth(), bookingEnd.getUTCDate(), bookingEnd.getUTCHours(), bookingEnd.getUTCMinutes(), bookingEnd.getUTCSeconds()));
-      const bookingStartUtc = new Date(Date.UTC(bookingStart.getUTCFullYear(), bookingStart.getUTCMonth(), bookingStart.getUTCDate(), bookingStart.getUTCHours(), bookingStart.getUTCMinutes(), bookingStart.getUTCSeconds()));
-      console.log("getUpcomingCount - status:", booking.status, "bookingEndUtc:", bookingEndUtc, "bookingStartUtc:", bookingStartUtc, "nowUtc:", nowUtc);
-      return (booking.status === 'confirmed' || booking.status === 'pending') &&
-             (bookingEndUtc >= nowUtc || isWithinTwentyMinutesAfterStart(dateOnly, booking.start_time));
-    }).length;
+    return bookings.filter(isUpcomingBooking).length;
   };
 
   // Get past count for badge
@@ -257,7 +261,8 @@ const AppointmentLog = () => {
           status: booking.status || 'pending',
           amount: booking.amount || 0,
           created_at: booking.created_at || new Date().toISOString(),
-          notes: booking.notes || ''
+          notes: booking.notes || '',
+          is_read: booking.is_read || false
         }));
         
         console.log("Processed seeker bookings:", processedBookings);
@@ -297,6 +302,7 @@ const AppointmentLog = () => {
         token = localStorage.getItem('token') || '';
       }
       
+      console.log('Fetching expert bookings for ID:', id);
       const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/expert/${id}`, {
         method: 'GET',
         headers: {
@@ -306,39 +312,49 @@ const AppointmentLog = () => {
       });
       
       if (!response.ok) {
+        console.error('Failed to fetch expert bookings:', response.statusText);
         setExpertBookings([]);
         setErrorExpert(`Failed to fetch expert bookings: ${response.statusText}`);
         return;
       }
       
       const data = await response.json();
+      console.log('Expert bookings response:', data);
       
       if (data && data.success && Array.isArray(data.data)) {
-        const processedBookings = data.data.map((booking: any) => ({
-          id: booking.id || `temp-${Math.random()}`,
-          expert_id: booking.expert_id || id,
-          seeker_id: booking.seeker_id || '',
-          expert_name: booking.expert_name || 'You',
-          seeker_name: booking.seeker_name || 'Unknown Seeker',
-          date: booking.date || booking.appointment_date || '',
-          start_time: booking.start_time || '',
-          end_time: booking.end_time || '',
-          session_type: booking.session_type || 'video',
-          status: booking.status || 'pending',
-          amount: booking.amount || 0,
-          created_at: booking.created_at || new Date().toISOString(),
-          notes: booking.notes || ''
-        }));
+        const processedBookings = data.data.map((booking: any) => {
+          const processed = {
+            id: booking.id || `temp-${Math.random()}`,
+            expert_id: booking.expert_id || id,
+            seeker_id: booking.seeker_id || '',
+            expert_name: booking.expert_name || 'You',
+            seeker_name: booking.seeker_name || 'Unknown Seeker',
+            date: booking.date || booking.appointment_date || '',
+            start_time: booking.start_time || '',
+            end_time: booking.end_time || '',
+            session_type: booking.session_type || 'video',
+            status: booking.status || 'pending',
+            amount: booking.amount || 0,
+            created_at: booking.created_at || new Date().toISOString(),
+            notes: booking.notes || '',
+            is_read: booking.is_read || false
+          };
+          console.log('Processed booking:', processed);
+          return processed;
+        });
         
+        console.log('Setting expert bookings:', processedBookings);
         setExpertBookings(processedBookings);
         setErrorExpert(null);
       } else {
+        console.error('Invalid expert bookings data:', data);
         setExpertBookings([]);
         if (data && !data.success) {
           setErrorExpert(data.message || "Failed to load bookings");
         }
       }
     } catch (error) {
+      console.error('Error fetching expert bookings:', error);
       setErrorExpert("Failed to load your bookings. Please try again.");
       setExpertBookings([]);
     } finally {
@@ -622,7 +638,7 @@ const AppointmentLog = () => {
     return now > sessionEnd;
   };
 
-  // Render booking card helper
+  // Update the renderBookingCard function
   const renderBookingCard = (booking: Booking) => {
     // Determine if the user is viewing as a seeker or expert
     const isViewingAsSeeker = userType === 'seeker';
@@ -750,6 +766,16 @@ const AppointmentLog = () => {
                   Join {booking.session_type.charAt(0).toUpperCase() + booking.session_type.slice(1)} Session
                 </Button>
               )}
+              {booking.status === 'rejected' && !booking.is_read && booking.session_type === 'chat' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => markBookingAsRead(booking.id)}
+                >
+                  Mark as Read
+                </Button>
+              )}
             </div>
           ) : (
             <div className="w-full space-y-2">
@@ -804,11 +830,303 @@ const AppointmentLog = () => {
                   Start {booking.session_type.charAt(0).toUpperCase() + booking.session_type.slice(1)} Session
                 </Button>
               )}
+              {booking.status === 'rejected' && !booking.is_read && booking.session_type === 'chat' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => markBookingAsRead(booking.id)}
+                >
+                  Mark as Read
+                </Button>
+              )}
             </div>
           )}
         </CardFooter>
       </Card>
     );
+  };
+
+  // Add this notification utility function after the imports
+  const requestNotificationPermission = async (): Promise<boolean> => {
+    try {
+      const permission = await Notification.requestPermission();
+      return permission === 'granted';
+    } catch (error) {
+      console.error('Error requesting notification permission:', error);
+      return false;
+    }
+  };
+
+  const showNotification = (title: string, options: NotificationOptions & { data?: any }) => {
+    if (Notification.permission === 'granted') {
+      const notification = new Notification(title, {
+        icon: '/logo.png',
+        badge: '/logo.png',
+        ...options
+      });
+
+      // Handle notification click
+      notification.onclick = () => {
+        window.focus();
+        if (options.data?.url) {
+          window.location.href = options.data.url;
+        }
+        notification.close();
+      };
+    }
+  };
+
+  // Add this service worker registration function after the imports
+  const registerServiceWorker = async () => {
+    if ('serviceWorker' in navigator) {
+      try {
+        // Check if service worker is already registered
+        const existingRegistration = await navigator.serviceWorker.getRegistration();
+        if (existingRegistration) {
+          console.log('Service Worker already registered:', existingRegistration.scope);
+          return existingRegistration;
+        }
+
+        // Register new service worker
+        const registration = await navigator.serviceWorker.register('/notification-worker.js', {
+          scope: '/'
+        });
+        
+        console.log('Service Worker registered successfully:', registration.scope);
+        
+        // Wait for the service worker to be ready
+        await navigator.serviceWorker.ready;
+        console.log('Service Worker is ready');
+        
+        return registration;
+      } catch (error) {
+        console.error('Service Worker registration failed:', error);
+        return null;
+      }
+    }
+    console.log('Service Workers not supported');
+    return null;
+  };
+
+  // Update the WebSocket connection setup
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    let serviceWorkerRegistration: ServiceWorkerRegistration | null = null;
+
+    const setupNotifications = async () => {
+      try {
+        // Register service worker first
+        serviceWorkerRegistration = await registerServiceWorker();
+        if (!serviceWorkerRegistration) {
+          console.log('Service Worker registration failed, falling back to basic notifications');
+        }
+
+        // Request notification permission
+        const hasPermission = await requestNotificationPermission();
+        if (!hasPermission) {
+          console.log('Notification permission denied');
+          return;
+        }
+
+        // Set up WebSocket connection for real-time notifications
+        const wsUrl = 'ws://192.168.1.8:8080/ws/notifications';
+        console.log('Connecting to WebSocket:', wsUrl);
+        
+        ws = new WebSocket(wsUrl);
+        
+        ws.onopen = () => {
+          console.log('WebSocket connection established');
+          const token = localStorage.getItem('token');
+          if (token) {
+            ws?.send(JSON.stringify({ type: 'auth', token }));
+          }
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data: NotificationData = JSON.parse(event.data);
+            console.log('Received notification:', data);
+            
+            // Refresh bookings when we receive a notification
+            if (userId) {
+              fetchSeekerBookings(userId);
+              fetchExpertBookings(userId);
+            }
+
+            // Show notification if service worker is available
+            if (serviceWorkerRegistration?.active) {
+              let notificationTitle = '';
+              let notificationBody = '';
+              let notificationTag = '';
+              let notificationColor = '';
+
+              // Format the date and time for the notification
+              const formatNotificationDateTime = (dateStr: string, timeStr: string) => {
+                const date = new Date(dateStr);
+                const options: Intl.DateTimeFormatOptions = { 
+                  weekday: 'short',
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric'
+                };
+                return `${date.toLocaleDateString('en-US', options)} at ${timeStr}`;
+              };
+
+              switch (data.type) {
+                case 'booking_confirmed':
+                  notificationTitle = 'Booking Confirmed';
+                  notificationBody = `Your ${data.session_type} session for ${formatNotificationDateTime(data.date || '', data.session_time || '')} has been confirmed`;
+                  notificationTag = 'booking_confirmed';
+                  notificationColor = 'green';
+                  break;
+                case 'booking_rejected':
+                  notificationTitle = 'Booking Rejected';
+                  notificationBody = `Your ${data.session_type} session for ${formatNotificationDateTime(data.date || '', data.session_time || '')} has been rejected`;
+                  notificationTag = 'booking_rejected';
+                  notificationColor = 'red';
+                  break;
+                default:
+                  notificationTitle = 'New Update';
+                  notificationBody = 'Your bookings have been updated';
+                  notificationTag = 'booking_update';
+                  notificationColor = 'blue';
+              }
+
+              serviceWorkerRegistration.active.postMessage({
+                type: 'SHOW_NOTIFICATION',
+                notification: {
+                  title: notificationTitle,
+                  body: notificationBody,
+                  icon: '/logo.png',
+                  badge: '/logo.png',
+                  tag: notificationTag,
+                  requireInteraction: true,
+                  data: {
+                    url: window.location.origin,
+                    color: notificationColor,
+                    bookingId: data.booking_id
+                  }
+                }
+              });
+            }
+          } catch (error) {
+            console.error('Error processing notification:', error);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          setTimeout(() => {
+            console.log('Attempting to reconnect WebSocket...');
+            setupNotifications();
+          }, 5000);
+        };
+
+        ws.onclose = () => {
+          console.log('WebSocket connection closed');
+          setTimeout(() => {
+            console.log('Attempting to reconnect WebSocket...');
+            setupNotifications();
+          }, 5000);
+        };
+      } catch (error) {
+        console.error('Error setting up WebSocket:', error);
+      }
+    };
+
+    setupNotifications();
+
+    return () => {
+      if (ws) {
+        ws.close();
+      }
+    };
+  }, [userId, userType, fetchSeekerBookings, fetchExpertBookings]);
+
+  // Update the booking filters
+  const isUpcomingBooking = (booking: Booking): boolean => {
+    try {
+      const now = new Date();
+      const bookingDate = new Date(booking.date);
+      const [hours, minutes] = booking.end_time.split(':').map(Number);
+      const bookingEnd = new Date(bookingDate);
+      bookingEnd.setHours(hours, minutes, 0, 0);
+
+      // Only show pending and confirmed bookings that haven't ended
+      // Rejected bookings will not appear in upcoming tab
+      return (booking.status === 'pending' || 
+              (booking.status === 'confirmed' && bookingEnd > now));
+    } catch (error) {
+      console.error('Error in isUpcomingBooking:', error, booking);
+      return false;
+    }
+  };
+
+  const isPastBooking = (booking: Booking): boolean => {
+    try {
+      const now = new Date();
+      const bookingDate = new Date(booking.date);
+      const [hours, minutes] = booking.end_time.split(':').map(Number);
+      const bookingEnd = new Date(bookingDate);
+      bookingEnd.setHours(hours, minutes, 0, 0);
+
+      // Include rejected bookings in past tab
+      return booking.status === 'rejected' || 
+             booking.status === 'completed' || 
+             booking.status === 'cancelled' ||
+             (booking.status === 'confirmed' && bookingEnd < now);
+    } catch (error) {
+      console.error('Error in isPastBooking:', error, booking);
+      return false;
+    }
+  };
+
+  // Add a refresh interval to update booking statuses
+  useEffect(() => {
+    const refreshInterval = setInterval(() => {
+      if (userId) {
+        fetchSeekerBookings(userId);
+        fetchExpertBookings(userId);
+      }
+    }, 60000);
+
+    return () => clearInterval(refreshInterval);
+  }, [userId]);
+
+  // Add a function to mark booking as read
+  const markBookingAsRead = async (bookingId: string) => {
+    try {
+      const userData = localStorage.getItem('user');
+      let token = '';
+      if (userData) {
+        const user = JSON.parse(userData);
+        token = user.token || user.accessToken || '';
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/${bookingId}/read`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to mark booking as read');
+      }
+
+      // Update local state
+      setSeekerBookings(prev => prev.map(booking => 
+        booking.id === bookingId ? { ...booking, is_read: true } : booking
+      ));
+      setExpertBookings(prev => prev.map(booking => 
+        booking.id === bookingId ? { ...booking, is_read: true } : booking
+      ));
+
+    } catch (error) {
+      console.error('Error marking booking as read:', error);
+    }
   };
 
   return (
@@ -867,9 +1185,7 @@ const AppointmentLog = () => {
           <Tabs defaultValue="upcoming" className="space-y-6">
             <TabsList
               className={
-                userType === 'seeker'
-                  ? "grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3"
-                  : "grid w-full grid-cols-4 lg:w-auto lg:grid-cols-4"
+                "grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3"
               }
             >
               <TabsTrigger value="upcoming" className="flex items-center gap-2">
@@ -888,17 +1204,6 @@ const AppointmentLog = () => {
                   </Badge>
                 )}
               </TabsTrigger>
-              {/* Only show contacts tab for expert */}
-              {userType === 'expert' && (
-                <TabsTrigger value="contacts" className="flex items-center gap-2">
-                  My Clients
-                  {uniqueContacts.length > 0 && (
-                    <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                      {uniqueContacts.length}
-                    </Badge>
-                  )}
-                </TabsTrigger>
-              )}
               <TabsTrigger value="all" className="flex items-center gap-2">
                 All
                 {bookings.length > 0 && (
@@ -911,19 +1216,7 @@ const AppointmentLog = () => {
             
             {/* Upcoming Appointments Tab */}
             <TabsContent value="upcoming" className="space-y-4">
-              {bookings.filter(booking => {
-                const dateOnly = booking.date.split('T')[0];
-                const bookingEnd = parseDateTime(dateOnly, booking.end_time);
-                const bookingStart = parseDateTime(dateOnly, booking.start_time);
-                const now = new Date();
-                const nowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds()));
-                const bookingEndUtc = new Date(Date.UTC(bookingEnd.getUTCFullYear(), bookingEnd.getUTCMonth(), bookingEnd.getUTCDate(), bookingEnd.getUTCHours(), bookingEnd.getUTCMinutes(), bookingEnd.getUTCSeconds()));
-                const bookingStartUtc = new Date(Date.UTC(bookingStart.getUTCFullYear(), bookingStart.getUTCMonth(), bookingStart.getUTCDate(), bookingStart.getUTCHours(), bookingStart.getUTCMinutes(), bookingStart.getUTCSeconds()));
-                console.log("Upcoming filter - booking.date:", booking.date, "end_time:", booking.end_time, "bookingEndUtc:", bookingEndUtc, "nowUtc:", nowUtc);
-                console.log("Upcoming filter - status:", booking.status, "bookingStartUtc:", bookingStartUtc, "nowUtc:", nowUtc);
-                return (booking.status === 'pending' || booking.status === 'confirmed') &&
-                       (bookingEndUtc >= nowUtc || isWithinTwentyMinutesAfterStart(dateOnly, booking.start_time));
-              }).length === 0 ? (
+              {bookings.filter(isUpcomingBooking).length === 0 ? (
                 <Card className="text-center py-12">
                   <CardContent>
                     <div className="space-y-4">
@@ -941,32 +1234,19 @@ const AppointmentLog = () => {
               ) : (
                 <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
-                    .filter(booking => {
-                      const dateOnly = booking.date.split('T')[0];
-                      const bookingEnd = parseDateTime(dateOnly, booking.end_time);
-                      const bookingStart = parseDateTime(dateOnly, booking.start_time);
-                      const now = new Date();
-                      const nowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds()));
-                      const bookingEndUtc = new Date(Date.UTC(bookingEnd.getUTCFullYear(), bookingEnd.getUTCMonth(), bookingEnd.getUTCDate(), bookingEnd.getUTCHours(), bookingEnd.getUTCMinutes(), bookingEnd.getUTCSeconds()));
-                      const bookingStartUtc = new Date(Date.UTC(bookingStart.getUTCFullYear(), bookingStart.getUTCMonth(), bookingStart.getUTCDate(), bookingStart.getUTCHours(), bookingStart.getUTCMinutes(), bookingStart.getUTCSeconds()));
-                      console.log("Upcoming filter inside map - booking.date:", booking.date, "end_time:", booking.end_time, "bookingEndUtc:", bookingEndUtc, "nowUtc:", nowUtc);
-                      console.log("Upcoming filter inside map - status:", booking.status, "bookingStartUtc:", bookingStartUtc, "nowUtc:", nowUtc);
-                      return (booking.status === 'pending' || booking.status === 'confirmed') &&
-                             (bookingEndUtc >= nowUtc || isWithinTwentyMinutesAfterStart(dateOnly, booking.start_time));
-                    })
+                    .filter(isUpcomingBooking)
                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                    .map(renderBookingCard)}
+                    .map(booking => {
+                      console.log('Rendering upcoming booking:', booking);
+                      return renderBookingCard(booking);
+                    })}
                 </div>
               )}
             </TabsContent>
             
             {/* Past Appointments Tab */}
             <TabsContent value="past" className="space-y-4">
-              {bookings.filter(booking => {
-                const bookingEnd = parseDateTime(booking.date, booking.end_time);
-                const now = new Date();
-                return bookingEnd < now || booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled';
-              }).length === 0 ? (
+              {bookings.filter(isPastBooking).length === 0 ? (
                 <Card className="text-center py-12">
                   <CardContent>
                     <div className="text-muted-foreground text-lg">
@@ -977,160 +1257,12 @@ const AppointmentLog = () => {
               ) : (
                 <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
-                    .filter(booking => {
-                      const bookingEnd = parseDateTime(booking.date, booking.end_time);
-                      const now = new Date();
-                      return bookingEnd < now || booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled';
-                    })
+                    .filter(isPastBooking)
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                     .map(renderBookingCard)}
                 </div>
               )}
             </TabsContent>
-            
-            {/* Contacts Tab */}
-            {userType === 'expert' && (
-              <TabsContent value="contacts" className="space-y-4">
-              {uniqueContacts.length === 0 ? (
-                <Card className="text-center py-12">
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="text-muted-foreground text-lg">
-                        You don't have any clients yet
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
-                  {uniqueContacts.map(contact => {
-                    const contactBookings = getBookingsWithContact(contact.id);
-                    const lastBooking = contactBookings.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-                    const upcomingCount = contactBookings.filter(b => {
-                      const bookingEnd = parseDateTime(b.date, b.end_time);
-                      const now = new Date();
-                      return bookingEnd > now && (b.status === 'confirmed' || b.status === 'pending');
-                    }).length;
-                    const completedCount = contactBookings.filter(b => b.status === 'completed').length;
-                    const totalCount = contactBookings.length;
-                    
-                    return (
-                      <Card key={contact.id} className="overflow-hidden hover:shadow-md transition-shadow">
-                        <CardHeader>
-                          <div className="flex items-start space-x-4">
-                            <Avatar className="h-12 w-12">
-                              <AvatarImage src={contact.profile_image} />
-                              <AvatarFallback className="bg-primary/10">
-                                {getInitials(`${contact.first_name} ${contact.last_name}`)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1">
-                              <CardTitle className="text-lg">
-                                {contact.first_name} {contact.last_name}
-                              </CardTitle>
-                              <CardDescription>
-                                {userType === 'seeker' 
-                                  ? (contact.specialty || 'Expert')
-                                  : (contact.company || 'Client')}
-                              </CardDescription>
-                              {userType === 'seeker' && contact.designation && (
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {contact.designation}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </CardHeader>
-                        
-                        <CardContent className="space-y-4">
-                          <div className="grid grid-cols-4 gap-4 text-center">
-                            <div>
-                              <div className="text-2xl font-bold text-blue-600">
-                                {completedCount}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                Completed
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-2xl font-bold text-green-600">
-                                {upcomingCount}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                Upcoming
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-2xl font-bold text-gray-600">
-                                {totalCount}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                Total
-                              </div>
-                            </div>
-                            <div>
-                              <Button 
-                                size="sm" 
-                                className="w-full"
-                                onClick={() => {
-                                  toast({
-                                    title: "Feature Coming Soon",
-                                    description: "Client messaging will be available soon",
-                                  });
-                                }}
-                              >
-                                Contact
-                              </Button>
-                            </div>
-                          </div>
-                          
-                          {lastBooking && (
-                            <div className="pt-3 border-t">
-                              <p className="text-sm text-muted-foreground">
-                                Last session: {formatDate(lastBooking.date)}
-                              </p>
-                            </div>
-                          )}
-                        </CardContent>
-                        
-                        <CardFooter className="pt-4 border-t bg-gray-50/50">
-                          {userType === 'seeker' ? (
-                            <div className="flex space-x-2 w-full">
-                              <Button 
-                                className="flex-1" 
-                                size="sm"
-                                onClick={() => navigate(`/experts/${contact.id}`)}
-                              >
-                                Book Again
-                              </Button>
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="flex-1"
-                                onClick={() => navigate(`/experts/${contact.id}`)}
-                              >
-                                View Profile
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex space-x-2 w-full">
-                              <Button 
-                                className="flex-1" 
-                                size="sm"
-                                onClick={() => navigate(`/clients/${contact.id}`)}
-                              >
-                                View Profile
-                              </Button>
-                            </div>
-                          )}
-                        </CardFooter>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
-              </TabsContent>
-            )}
             
             {/* All Appointments Tab */}
             <TabsContent value="all" className="space-y-4">
@@ -1145,8 +1277,20 @@ const AppointmentLog = () => {
               ) : (
                 <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map(renderBookingCard)}
+                    .sort((a, b) => {
+                      // Sort by date (newest first)
+                      const dateA = new Date(a.date).getTime();
+                      const dateB = new Date(b.date).getTime();
+                      if (dateA !== dateB) return dateB - dateA;
+                      
+                      // Then sort by status (pending first, then confirmed)
+                      if (a.status === 'pending' && b.status !== 'pending') return -1;
+                      if (a.status !== 'pending' && b.status === 'pending') return 1;
+                      
+                      // Finally sort by time
+                      return b.start_time.localeCompare(a.start_time);
+                    })
+                    .map(booking => renderBookingCard(booking))}
                 </div>
               )}
             </TabsContent>

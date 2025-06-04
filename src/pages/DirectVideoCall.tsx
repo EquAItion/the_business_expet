@@ -13,11 +13,40 @@ const DirectVideoCall = () => {
   const [agoraToken, setAgoraToken] = useState<string | null>(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
 
-  // Get user data from localStorage
-  const userData = localStorage.getItem('user');
-  const parsedUserData = userData ? JSON.parse(userData) : {};
-  const userId = parsedUserData.user_id || parsedUserData.id;
-  const token = parsedUserData.token;
+  // Get user data from localStorage with improved error handling
+  const userData = localStorage.getItem('user') || localStorage.getItem('userData') || '{}';
+  let userId = null;
+  let token = null;
+  try {
+    const parsedUserData = JSON.parse(userData);
+    userId = parsedUserData.user_id || parsedUserData.id;
+    token = parsedUserData.token || parsedUserData.accessToken;
+    
+    // If we have a token but no userId, try to extract it from the token
+    if (!userId && token) {
+      try {
+        const payloadBase64 = token.split('.')[1];
+        const payloadJson = atob(payloadBase64);
+        const payload = JSON.parse(payloadJson);
+        userId = payload.user_id || payload.id || null;
+      } catch (e) {
+        console.error('Failed to extract userId from token:', e);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to parse user data:', e);
+  }
+
+  // Validate user data before proceeding
+  useEffect(() => {
+    if (!userId || !token) {
+      setError('Authentication required. Please log in again.');
+      toast.error('Authentication required. Please log in again.');
+      setTimeout(() => {
+        navigate('/login');
+      }, 2000);
+    }
+  }, [userId, token, navigate]);
 
   const requestMediaPermissions = async () => {
     try {
@@ -36,15 +65,18 @@ const DirectVideoCall = () => {
 
   const fetchAgoraToken = async () => {
     try {
+      if (!userId || !token || !id) {
+        throw new Error('Authentication required. Please log in again.');
+      }
+
       setLoading(true);
-      console.log("Fetching Agora token for channel:", id);
+      console.log("Fetching Agora token for channel:", id, "userId:", userId);
       
-      // Now try the Agora token endpoint directly
       const response = await fetch(`${API_BASE_URL}/api/agora/token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ 
           channelName: id,

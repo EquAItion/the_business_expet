@@ -52,11 +52,16 @@ interface Availability {
   name?: string;
 }
 
+interface SelectedSlot {
+  startTime: string;
+  endTime: string;
+  price: number;
+}
+
 interface BookingFormData {
   expertId: string;
   date: string;
-  startTime: string;
-  endTime: string;
+  selectedSlot: SelectedSlot | null;
   sessionType: 'video' | 'audio' | 'chat';
 }
 
@@ -70,6 +75,7 @@ interface BookingSlot {
   status: 'pending' | 'confirmed' | 'rejected' | 'completed';
   session_type: 'video' | 'audio' | 'chat';
   created_at?: string;
+  seeker_name?: string;
 }
 
 const daysOfWeek = [
@@ -99,8 +105,7 @@ const ExpertProfileContent = () => {
   const [bookingForm, setBookingForm] = useState<BookingFormData>({
     expertId: '',
     date: '',
-    startTime: '',
-    endTime: '',
+    selectedSlot: null,
     sessionType: 'video'
   });
   const [calculatedPrice, setCalculatedPrice] = useState<number>(0);
@@ -226,7 +231,7 @@ const ExpertProfileContent = () => {
     let hour = parseInt(hourStr, 10);
     const ampm = hour >= 12 ? 'PM' : 'AM';
     hour = hour % 12 || 12;
-    return `${hour}:${minute} ${ampm}`;
+    return `${hour} ${ampm}`;
   };
 
   const groupedAvailability = useMemo(() => {
@@ -288,40 +293,16 @@ const ExpertProfileContent = () => {
     }
   };
 
-  const isSlotBooked = (day: string, startTime: string, endTime: string): boolean => {
-    // Convert day name to date for the current week
-    const today = new Date();
-    const dayIndex = daysOfWeek.indexOf(day);
-    const currentDayIndex = today.getDay() === 0 ? 6 : today.getDay() - 1; // Convert Sunday=0 to Monday=0 format
-    
-    const daysToAdd = dayIndex >= currentDayIndex 
-      ? dayIndex - currentDayIndex 
-      : 7 - (currentDayIndex - dayIndex);
-    
-    const targetDate = new Date(today);
-    targetDate.setDate(today.getDate() + daysToAdd);
-    
-    const dateString = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
-    
-    // Convert times to comparable format
-    const slotStartTime = convertTo24Hour(startTime);
-    const slotEndTime = convertTo24Hour(endTime);
-    
-    return existingBookings.some(booking => {
-      const bookingStart = convertTo24Hour(booking.start_time);
-      const bookingEnd = convertTo24Hour(booking.end_time);
-      
-      // Check if there's any overlap
-      return booking.date === dateString && (
-        (bookingStart <= slotStartTime && bookingEnd > slotStartTime) || // New booking starts during existing booking
-        (bookingStart < slotEndTime && bookingEnd >= slotEndTime) || // New booking ends during existing booking
-        (slotStartTime <= bookingStart && slotEndTime >= bookingEnd) // New booking completely contains existing booking
-      );
-    });
-  };
-
-  // Add a function to get booking status for a slot
-  const getSlotBookingStatus = (day: string, startTime: string, endTime: string): { isBooked: boolean; status?: string } => {
+  const getSlotBookingStatus = (day: string, startTime: string, endTime: string): { 
+    isBooked: boolean; 
+    status?: string; 
+    message?: string;
+    bookingDetails?: {
+      sessionType: string;
+      seekerName: string;
+      status: string;
+    };
+  } => {
     const today = new Date();
     const dayIndex = daysOfWeek.indexOf(day);
     const currentDayIndex = today.getDay() === 0 ? 6 : today.getDay() - 1;
@@ -338,10 +319,12 @@ const ExpertProfileContent = () => {
     const slotStartTime = convertTo24Hour(startTime);
     const slotEndTime = convertTo24Hour(endTime);
     
+    // Find any overlapping booking regardless of session type
     const overlappingBooking = existingBookings.find(booking => {
       const bookingStart = convertTo24Hour(booking.start_time);
       const bookingEnd = convertTo24Hour(booking.end_time);
       
+      // Check if the booking is for the same date and has any overlap
       return booking.date === dateString && (
         (bookingStart <= slotStartTime && bookingEnd > slotStartTime) ||
         (bookingStart < slotEndTime && bookingEnd >= slotEndTime) ||
@@ -349,10 +332,35 @@ const ExpertProfileContent = () => {
       );
     });
     
-    return {
-      isBooked: !!overlappingBooking,
-      status: overlappingBooking?.status
-    };
+    if (overlappingBooking) {
+      // If the booking is completed, allow new bookings
+      if (overlappingBooking.status === 'completed') {
+        return { isBooked: false };
+      }
+      
+      // For any other status, the slot is booked
+      let message = "This time slot is ";
+      if (overlappingBooking.status === 'pending') {
+        message += `pending approval for a ${overlappingBooking.session_type} session by ${overlappingBooking.seeker_name || 'another seeker'}. Please choose a different time.`;
+      } else if (overlappingBooking.status === 'confirmed') {
+        message += `already booked for a ${overlappingBooking.session_type} session by ${overlappingBooking.seeker_name || 'another seeker'}. Please choose a different time.`;
+      } else if (overlappingBooking.status === 'rejected' || overlappingBooking.status === 'cancelled') {
+        return { isBooked: false }; // Allow booking if previous booking was rejected/cancelled
+      }
+      
+      return {
+        isBooked: true,
+        status: overlappingBooking.status,
+        message,
+        bookingDetails: {
+          sessionType: overlappingBooking.session_type,
+          seekerName: overlappingBooking.seeker_name || 'Another seeker',
+          status: overlappingBooking.status
+        }
+      };
+    }
+    
+    return { isBooked: false };
   };
 
   // Helper to convert 12-hour time with AM/PM to 24-hour "HH:mm"
@@ -374,7 +382,7 @@ const ExpertProfileContent = () => {
     if (bookingStatus.isBooked) {
       toast({
         title: "Time Slot Unavailable",
-        description: `This time slot is ${bookingStatus.status === 'pending' ? 'pending approval' : 'already booked'}. Please choose a different time.`,
+        description: bookingStatus.message,
         variant: "destructive"
       });
       return;
@@ -397,31 +405,27 @@ const ExpertProfileContent = () => {
     
     const dateString = targetDate.toISOString().split('T')[0];
     
+    // Initialize booking form with empty selected slots
     setBookingForm({
       expertId: expert?.user_id || '',
       date: dateString,
-      startTime: convertTo24Hour(slot.start_time),
-      endTime: convertTo24Hour(slot.end_time),
+      selectedSlot: null,
       sessionType: 'video'
     });
     
-    calculatePrice(convertTo24Hour(slot.start_time), convertTo24Hour(slot.end_time), 'video');
     setBookingDialogOpen(true);
   };
 
-  const calculatePrice = (startTime: string, endTime: string, sessionType: 'video' | 'audio' | 'chat') => {
-    if (!expert) return;
+  const calculateSlotPrice = (startTime: string, endTime: string, sessionType: 'video' | 'audio' | 'chat'): number => {
+    if (!expert) return 0;
     
-    // Parse times to calculate duration in hours
     const [startHour, startMinute] = startTime.split(':').map(Number);
     const [endHour, endMinute] = endTime.split(':').map(Number);
     
     let durationHours = endHour - startHour;
     const durationMinutes = endMinute - startMinute;
-    
     durationHours += durationMinutes / 60;
     
-    // Get hourly rate based on session type
     let hourlyRate = 0;
     switch (sessionType) {
       case 'video':
@@ -435,72 +439,111 @@ const ExpertProfileContent = () => {
         break;
     }
     
-    const totalPrice = hourlyRate * durationHours;
-    setCalculatedPrice(totalPrice);
+    return hourlyRate * durationHours;
   };
 
   const handleBookingFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     
-    const updatedForm = {
-      ...bookingForm,
-      [name]: value
-    };
-    
-    setBookingForm(updatedForm);
-    
-    // Recalculate price when time or session type changes
-    if (name === 'startTime' || name === 'endTime' || name === 'sessionType') {
-      calculatePrice(
-        name === 'startTime' ? value : bookingForm.startTime,
-        name === 'endTime' ? value : bookingForm.endTime,
-        name === 'sessionType' ? value as 'video' | 'audio' | 'chat' : bookingForm.sessionType
-      );
+    if (name === 'sessionType') {
+      const newSessionType = value as 'video' | 'audio' | 'chat';
+      setBookingForm(prev => ({
+        ...prev,
+        sessionType: newSessionType,
+        selectedSlot: prev.selectedSlot ? {
+          ...prev.selectedSlot,
+          price: calculateSlotPrice(prev.selectedSlot.startTime, prev.selectedSlot.endTime, newSessionType)
+        } : null
+      }));
+    } else if (name === 'date') {
+      setBookingForm(prev => ({
+        ...prev,
+        date: value,
+        selectedSlot: null // Clear selected slot when date changes
+      }));
     }
   };
 
-  // Add a function to get available time slots for a specific day
-  const getAvailableTimeSlots = (date: string): string[] => {
-    const dayOfWeek = new Date(date).toLocaleDateString('en-US', { weekday: 'long' });
-    const daySlots = availability.filter(a => a.day_of_week.toLowerCase() === dayOfWeek.toLowerCase());
+  // Update the generateTimeSlots function to support 24-hour slots
+  const generateTimeSlots = (startTime: string, endTime: string): string[] => {
+    const slots: string[] = [];
+    const start = convertTo24Hour(startTime);
+    const end = convertTo24Hour(endTime);
     
-    if (daySlots.length === 0) return [];
+    const [startHour, startMinute] = start.split(':').map(Number);
+    const [endHour, endMinute] = end.split(':').map(Number);
     
-    // Get all time slots from expert's availability
-    const timeSlots: string[] = [];
-    daySlots.forEach(slot => {
-      const start = convertTo24Hour(slot.start_time);
-      const end = convertTo24Hour(slot.end_time);
+    let currentHour = startHour;
+    let currentMinute = startMinute;
+    
+    // Handle case where end time is on the next day
+    const isNextDay = endHour < startHour || (endHour === startHour && endMinute < startMinute);
+    const maxHour = isNextDay ? endHour + 24 : endHour;
+    
+    while (currentHour < maxHour || (currentHour === maxHour && currentMinute < endMinute)) {
+      const slotStart = `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`;
       
-      // Only add times that are within expert's availability and not booked
-      const bookingStatus = getSlotBookingStatus(dayOfWeek, slot.start_time, slot.end_time);
-      if (!bookingStatus.isBooked) {
-        timeSlots.push(start);
+      // Add one hour
+      currentHour += 1;
+      if (currentHour >= 24) currentHour = 0;
+      
+      const slotEnd = `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`;
+      
+      // Only add slot if it's within the availability window
+      if (slotEnd <= end || (isNextDay && currentHour <= endHour)) {
+        slots.push(slotStart);
       }
-    });
+    }
     
-    return timeSlots;
+    return slots;
   };
 
-  // Update the booking form to use time select instead of time input
+  const handleSlotClick = (startTime: string) => {
+    const endTime = startTime.split(':').map(Number);
+    endTime[0] = (endTime[0] + 1) % 24;
+    const endTimeStr = `${endTime[0].toString().padStart(2, '0')}:${endTime[1].toString().padStart(2, '0')}`;
+    
+    const slotPrice = calculateSlotPrice(startTime, endTimeStr, bookingForm.sessionType);
+    const newSlot = { startTime, endTime: endTimeStr, price: slotPrice };
+    
+    setBookingForm(prev => {
+      // If clicking the same slot, deselect it
+      if (prev.selectedSlot?.startTime === startTime && prev.selectedSlot?.endTime === endTimeStr) {
+        return {
+          ...prev,
+          selectedSlot: null
+        };
+      }
+      
+      // Otherwise, select the new slot
+      return {
+        ...prev,
+        selectedSlot: newSlot
+      };
+    });
+  };
+
+  // Update the BookingTimeSelect component to show better UI for booked slots
   const BookingTimeSelect = ({ 
-    value, 
-    onChange, 
     date,
     label,
     name,
     className 
   }: { 
-    value: string;
-    onChange: (value: string) => void;
     date: string;
     label: string;
     name: string;
     className?: string;
   }) => {
-    const availableSlots = getAvailableTimeSlots(date);
+    const dayOfWeek = new Date(date).toLocaleDateString('en-US', { weekday: 'long' });
+    const daySlots = availability.filter(a => a.day_of_week.toLowerCase() === dayOfWeek.toLowerCase());
     
-    if (availableSlots.length === 0) {
+    // Generate all possible time slots for the day
+    const allTimeSlots = daySlots.flatMap(slot => 
+      generateTimeSlots(slot.start_time, slot.end_time)
+    );
+    
+    if (allTimeSlots.length === 0) {
       return (
         <div className="grid grid-cols-4 items-center gap-4">
           <Label htmlFor={name} className="text-right">
@@ -514,48 +557,88 @@ const ExpertProfileContent = () => {
     }
     
     return (
-      <div className="grid grid-cols-4 items-center gap-4">
-        <Label htmlFor={name} className="text-right">
+      <div className="grid grid-cols-4 items-start gap-4">
+        <Label htmlFor={name} className="text-right pt-2">
           {label}
         </Label>
-        <select
-          id={name}
-          name={name}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className={`col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
-        >
-          <option value="">Select time</option>
-          {availableSlots.map((time) => (
-            <option key={time} value={time}>
-              {formatTime(time)}
-            </option>
-          ))}
-        </select>
+        <div className="col-span-3">
+          <div className="border rounded-lg p-4 bg-card">
+            <div className="grid grid-cols-4 gap-3">
+              {allTimeSlots.map((startTime) => {
+                const endTime = startTime.split(':').map(Number);
+                endTime[0] = (endTime[0] + 1) % 24;
+                const endTimeStr = `${endTime[0].toString().padStart(2, '0')}:${endTime[1].toString().padStart(2, '0')}`;
+                
+                const bookingStatus = getSlotBookingStatus(dayOfWeek, formatTime(startTime), formatTime(endTimeStr));
+                const isSelected = bookingForm.selectedSlot?.startTime === startTime && 
+                                 bookingForm.selectedSlot?.endTime === endTimeStr;
+                
+                // If slot is booked, render a disabled div with detailed booking info
+                if (bookingStatus.isBooked) {
+                  return (
+                    <div 
+                      key={startTime} 
+                      className="relative group cursor-not-allowed"
+                      title={bookingStatus.message}
+                    >
+                      <div className="w-full min-h-[3.5rem] px-3 py-2 text-sm rounded-lg border bg-muted/50 text-muted-foreground border-muted flex items-center justify-center">
+                        <span className="font-medium text-center leading-tight">
+                          {formatTime(startTime)} - {formatTime(endTimeStr)}
+                        </span>
+                      </div>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/90 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity p-2">
+                        <span className="text-xs text-center font-medium mb-1">
+                          {bookingStatus.status === 'pending' ? 'Pending Approval' : 'Booked'}
+                        </span>
+                        {bookingStatus.bookingDetails && (
+                          <>
+                            <span className="text-xs text-center">
+                              {bookingStatus.bookingDetails.sessionType} Session
+                            </span>
+                            <span className="text-xs text-center text-muted-foreground">
+                              by {bookingStatus.bookingDetails.seekerName}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+                
+                // If slot is available, render a clickable button
+                return (
+                  <div key={startTime} className="relative group">
+                    <button
+                      type="button"
+                      onClick={() => handleSlotClick(startTime)}
+                      className={`w-full min-h-[3.5rem] px-3 py-2 text-sm rounded-lg border transition-all flex items-center justify-center
+                        ${isSelected
+                          ? 'bg-primary/10 text-primary border-primary hover:bg-primary/20'
+                          : 'bg-background hover:bg-accent/50 hover:text-accent-foreground border-input'
+                        }
+                        ${className || ''}
+                      `}
+                    >
+                      <span className="font-medium text-center leading-tight">
+                        {formatTime(startTime)} - {formatTime(endTimeStr)}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
 
-  // Update handleSubmitBooking to double-check for overlaps before submitting
+  // Update handleSubmitBooking to include seeker name
   const handleSubmitBooking = async () => {
     try {
+      if (!bookingForm.selectedSlot) return;
+      
       setIsBooking(true);
-      
-      // Double check if the slot is still available
-      const bookingStatus = getSlotBookingStatus(
-        daysOfWeek[new Date(bookingForm.date).getDay() === 0 ? 6 : new Date(bookingForm.date).getDay() - 1],
-        formatTime(bookingForm.startTime),
-        formatTime(bookingForm.endTime)
-      );
-      
-      if (bookingStatus.isBooked) {
-        toast({
-          title: "Time Slot Unavailable",
-          description: `This time slot is ${bookingStatus.status === 'pending' ? 'pending approval' : 'already booked'}. Please choose a different time.`,
-          variant: "destructive"
-        });
-        return;
-      }
       
       // Get API URL
       const API_BASE_URL = import.meta.env.VITE_API_URL;
@@ -585,8 +668,9 @@ const ExpertProfileContent = () => {
         return;
       }
       
-      // Get token
+      // Get token and user info
       const token = parsedUserData.token;
+      const seekerName = `${parsedUserData.first_name || ''} ${parsedUserData.last_name || ''}`.trim();
       
       if (!token) {
         toast({
@@ -596,19 +680,42 @@ const ExpertProfileContent = () => {
         });
         return;
       }
+
+      // Double check if the slot is still available before booking
+      const dayOfWeek = new Date(bookingForm.date).toLocaleDateString('en-US', { weekday: 'long' });
+      const bookingStatus = getSlotBookingStatus(
+        dayOfWeek,
+        bookingForm.selectedSlot.startTime,
+        bookingForm.selectedSlot.endTime
+      );
+
+      if (bookingStatus.isBooked) {
+        toast({
+          title: "Time Slot Unavailable",
+          description: bookingStatus.message || "This time slot has just been booked by someone else. Please choose a different time.",
+          variant: "destructive"
+        });
+        setBookingDialogOpen(false);
+        // Refresh bookings to update UI
+        if (expert?.user_id) {
+          await fetchExistingBookings(expert.user_id);
+        }
+        return;
+      }
       
-      // Prepare request payload
+      // Create booking payload with seeker name
       const payload = {
         expert_id: expert?.user_id,
         seeker_id: parsedUserData.user_id || parsedUserData.id || '',
+        seeker_name: seekerName,
         date: bookingForm.date,
-        start_time: bookingForm.startTime,
-        end_time: bookingForm.endTime,
+        start_time: bookingForm.selectedSlot.startTime,
+        end_time: bookingForm.selectedSlot.endTime,
         session_type: bookingForm.sessionType,
-        amount: calculatedPrice
+        amount: bookingForm.selectedSlot.price
       };
       
-      // Make the request
+      // Make the booking request
       const response = await fetch(`${API_BASE_URL}/api/bookings`, {
         method: 'POST',
         headers: {
@@ -622,20 +729,24 @@ const ExpertProfileContent = () => {
 
       if (!response.ok) {
         if (response.status === 409) {
-          // Handle overlapping booking error
+          // Slot was booked by someone else while we were trying to book
           toast({
             title: "Time Slot Unavailable",
-            description: data.message || "This time slot is already booked or pending approval. Please choose a different time.",
+            description: data.message || "This time slot has just been booked by someone else. Please choose a different time.",
             variant: "destructive"
           });
+          // Refresh bookings to update UI
+          if (expert?.user_id) {
+            await fetchExistingBookings(expert.user_id);
+          }
         } else {
-          // Handle other errors
           toast({
             title: "Booking Failed",
             description: data.message || "Failed to create booking. Please try again.",
             variant: "destructive"
           });
         }
+        setBookingDialogOpen(false);
         return;
       }
 
@@ -645,12 +756,16 @@ const ExpertProfileContent = () => {
         description: "Your booking request has been sent to the expert for approval.",
       });
 
+      // Refresh existing bookings to update the UI
+      if (expert?.user_id) {
+        await fetchExistingBookings(expert.user_id);
+      }
+
       // Reset form and close dialog
       setBookingForm({
         expertId: expert?.user_id || '',
         date: '',
-        startTime: '',
-        endTime: '',
+        selectedSlot: null,
         sessionType: 'video'
       });
       setBookingDialogOpen(false);
@@ -915,7 +1030,7 @@ const ExpertProfileContent = () => {
       </div>
       <Footer />
       <Dialog open={bookingDialogOpen} onOpenChange={setBookingDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>Book a Session</DialogTitle>
             <DialogDescription>
@@ -933,40 +1048,20 @@ const ExpertProfileContent = () => {
                 name="date"
                 type="date"
                 value={bookingForm.date}
-                onChange={handleBookingFormChange}
+                onChange={(e) => setBookingForm(prev => ({ 
+                  ...prev, 
+                  date: e.target.value,
+                  selectedSlot: null // Clear selected slot when date changes
+                }))}
                 className="col-span-3"
                 readOnly
               />
             </div>
             
             <BookingTimeSelect
-              label="Start Time"
-              name="startTime"
-              value={bookingForm.startTime}
-              onChange={(value) => {
-                setBookingForm(prev => ({
-                  ...prev,
-                  startTime: value,
-                  endTime: '' // Reset end time when start time changes
-                }));
-                calculatePrice(value, '', bookingForm.sessionType);
-              }}
               date={bookingForm.date}
-            />
-            
-            <BookingTimeSelect
-              label="End Time"
-              name="endTime"
-              value={bookingForm.endTime}
-              onChange={(value) => {
-                setBookingForm(prev => ({
-                  ...prev,
-                  endTime: value
-                }));
-                calculatePrice(bookingForm.startTime, value, bookingForm.sessionType);
-              }}
-              date={bookingForm.date}
-              className={!bookingForm.startTime ? 'opacity-50' : ''}
+              label="Available Time Slots"
+              name="timeSlots"
             />
             
             <div className="grid grid-cols-4 items-center gap-4">
@@ -977,8 +1072,21 @@ const ExpertProfileContent = () => {
                 id="sessionType"
                 name="sessionType"
                 value={bookingForm.sessionType}
-                onChange={handleBookingFormChange}
-                aria-label="Session Type"
+                onChange={(e) => {
+                  const newSessionType = e.target.value as 'video' | 'audio' | 'chat';
+                  setBookingForm(prev => ({
+                    ...prev,
+                    sessionType: newSessionType,
+                    selectedSlot: prev.selectedSlot ? {
+                      ...prev.selectedSlot,
+                      price: calculateSlotPrice(
+                        prev.selectedSlot.startTime,
+                        prev.selectedSlot.endTime,
+                        newSessionType
+                      )
+                    } : null
+                  }));
+                }}
                 className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <option value="video">Video Call (${expert?.video_pricing}/hr)</option>
@@ -986,13 +1094,15 @@ const ExpertProfileContent = () => {
                 <option value="chat">Chat (${expert?.chat_pricing}/hr)</option>
               </select>
             </div>
-            
-            <div className="grid grid-cols-4 items-center gap-4">
-              <span className="text-right font-medium">Total Price</span>
-              <div className="col-span-3 text-lg font-bold text-primary">
-                ${calculatedPrice.toFixed(2)}
+
+            {bookingForm.selectedSlot && (
+              <div className="grid grid-cols-4 items-center gap-4">
+                <span className="text-right font-medium">Total Price</span>
+                <div className="col-span-3 text-lg font-bold text-primary">
+                  ${bookingForm.selectedSlot.price.toFixed(2)}
+                </div>
               </div>
-            </div>
+            )}
           </div>
           
           <DialogFooter>
@@ -1001,7 +1111,7 @@ const ExpertProfileContent = () => {
             </Button>
             <Button 
               onClick={handleSubmitBooking} 
-              disabled={isBooking || !bookingForm.startTime || !bookingForm.endTime}
+              disabled={isBooking || !bookingForm.selectedSlot}
             >
               {isBooking ? "Booking..." : "Book Session"}
             </Button>

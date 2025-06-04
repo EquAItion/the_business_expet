@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "react-hot-toast";
+import { Badge } from '../ui/badge';
 
 const navItems = [
   { label: "Home", href: "/" },
@@ -47,23 +48,22 @@ const Navbar = () => {
       avatar?: string;
     };
   }>({});
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [user, setUser] = useState<any>(null);
 
-  // Check for authentication on component mount
+  // Update user state initialization
   useEffect(() => {
-    const checkAuth = () => {
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        try {
-          const parsedUserData = JSON.parse(storedUser);
-          setUserData(parsedUserData);
-          setIsAuthenticated(true);
-        } catch (error) {
-          console.error('Error parsing user data:', error);
-        }
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setUserData(parsedUser);
+        setUser(parsedUser); // Set the user state with the parsed user data
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error('Error parsing user data:', error);
       }
-    };
-
-    checkAuth();
+    }
   }, []);
 
   useEffect(() => {
@@ -74,6 +74,31 @@ const Navbar = () => {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  // Update notification fetching to use userData instead of user
+  useEffect(() => {
+    if (!userData?.user_id) return;
+
+    const fetchUnreadCount = async () => {
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_URL;
+        const response = await fetch(`${API_BASE_URL}/api/notifications/${userData.user_id}/unread-count`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setUnreadCount(data.count);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching unread notifications:', error);
+      }
+    };
+
+    fetchUnreadCount();
+    // Set up polling for new notifications
+    const interval = setInterval(fetchUnreadCount, 30000); // Poll every 30 seconds
+    return () => clearInterval(interval);
+  }, [userData?.user_id]);
 
   const handleRoleSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const role = e.target.value;

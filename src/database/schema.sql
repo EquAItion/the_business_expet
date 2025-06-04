@@ -315,3 +315,68 @@ CREATE TABLE notifications (
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_status BOOLEAN DEFAULT FALSE;
 
 
+CREATE TABLE notification_tokens (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL UNIQUE,
+  token VARCHAR(512) NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+
+
+-- Create notifications table if it doesn't exist
+CREATE TABLE IF NOT EXISTS notifications (
+    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+    user_id VARCHAR(36) NOT NULL,
+    type ENUM(
+        'booking',
+        'booking_status',
+        'booking_reschedule',
+        'session_reminder',
+        'message',
+        'session_accepted',
+        'session_rejected',
+        'session_cancelled',
+        'session_rescheduled'
+    ) NOT NULL,
+    message TEXT NOT NULL,
+    related_id VARCHAR(36),
+    read_status BOOLEAN DEFAULT FALSE,
+    status_color VARCHAR(20) DEFAULT 'default',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_notifications_user_id (user_id),
+    INDEX idx_notifications_type (type),
+    INDEX idx_notifications_created_at (created_at)
+);
+
+-- Create notification_tokens table if it doesn't exist
+CREATE TABLE IF NOT EXISTS notification_tokens (
+    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+    user_id VARCHAR(36) NOT NULL,
+    token TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_user_token (user_id, token(255)),
+    INDEX idx_notification_tokens_user_id (user_id)
+); 
+
+-- Check if notification_token column exists
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'users' 
+        AND column_name = 'notification_token'
+    ) THEN
+        -- Add notification_token column
+        ALTER TABLE users 
+        ADD COLUMN notification_token TEXT;
+        
+        -- Create index for faster lookups
+        CREATE INDEX idx_users_notification_token 
+        ON users(notification_token);
+    END IF;
+END $$; 
