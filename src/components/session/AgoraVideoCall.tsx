@@ -223,12 +223,12 @@ const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
           // Video session layout
           <>
             {/* Remote videos */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full p-4">
+            <div className="h-full w-full">
               {remoteUsers.length > 0 ? (
                 remoteUsers.map(user => (
                   <div 
                     key={user.uid} 
-                    className="bg-black rounded-lg overflow-hidden h-full"
+                    className="w-full h-full bg-black"
                     ref={el => {
                       if (el && user.videoTrack) {
                         user.videoTrack.play(el);
@@ -237,7 +237,7 @@ const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
                   />
                 ))
               ) : (
-                <div className="flex items-center justify-center h-full col-span-full">
+                <div className="flex items-center justify-center h-full w-full">
                   <p className="text-gray-500">Waiting for others to join...</p>
                 </div>
               )}
@@ -246,7 +246,7 @@ const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
             {/* Local video (small overlay) */}
             <div 
               ref={setLocalVideoRef}
-              className={`absolute ${isMobile ? 'bottom-20' : 'bottom-4'} right-4 w-48 h-36 bg-black rounded-lg overflow-hidden border-2 border-white shadow-lg`}
+              className={`absolute ${isMobile ? 'bottom-20' : 'bottom-4'} right-4 w-48 h-36 bg-black rounded-lg overflow-hidden border-2 border-white shadow-lg z-10`}
             />
           </>
         ) : (
