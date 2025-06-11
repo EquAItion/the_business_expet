@@ -74,8 +74,11 @@ app.use(cors({
       'http://localhost:5173',
       'https://localhost:3000',
       'https://localhost:5173',
+      'https://localhost:5174',
       'http://192.168.0.118:5173',
       'http://192.168.1.8:5173',
+       
+      'http://192.168.1.8:5174',,
       'https://expertisestation.com'
     ];
     

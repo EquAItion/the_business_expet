@@ -29,6 +29,10 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    dedupe: ['lucide-react']
   },
+  optimizeDeps: {
+    include: ['lucide-react']
+  }
 });
 

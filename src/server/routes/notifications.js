@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../database');
+const connection = require('../models/db');
 const admin = require('firebase-admin');
 
 // Get notifications for a user
@@ -11,59 +11,8 @@ router.get('/:userId', async (req, res) => {
   try {
     const pool = req.app.locals.db;
     
-    // Check if read_status column exists
-    const [columns] = await pool.query(
-      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'expertise_station' AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'read_status'"
-    );
-    
-    if (columns.length === 0) {
-      console.log('Adding read_status column to notifications table');
-      await pool.query(
-        "ALTER TABLE notifications ADD COLUMN read_status BOOLEAN DEFAULT FALSE"
-      );
-    }
+  
 
-    // Check if status_color column exists
-    const [colorColumns] = await pool.query(
-      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'expertise_station' AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'status_color'"
-    );
-
-    if (colorColumns.length === 0) {
-      console.log('Adding status_color column to notifications table');
-      await pool.query(
-        "ALTER TABLE notifications ADD COLUMN status_color VARCHAR(20) DEFAULT 'default'"
-      );
-    }
-
-    // Check if type column needs update (enum values)
-    const [typeColumns] = await pool.query(
-      "SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'expertise_station' AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'type'"
-    );
-
-    if (typeColumns.length > 0) {
-      const typeColumn = typeColumns[0];
-      const currentTypes = typeColumn.COLUMN_TYPE.replace(/^enum\(|\)$/g, '').split(',').map(t => t.replace(/^'|'$/g, ''));
-      const newTypes = [
-        'booking',
-        'booking_status',
-        'booking_reschedule',
-        'session_reminder',
-        'message',
-        'session_accepted',
-        'session_rejected',
-        'session_cancelled',
-        'session_rescheduled'
-      ];
-
-      const missingTypes = newTypes.filter(t => !currentTypes.includes(t));
-      if (missingTypes.length > 0) {
-        console.log('Updating notification types to include:', missingTypes);
-        await pool.query(
-          `ALTER TABLE notifications MODIFY COLUMN type ENUM(${newTypes.map(t => `'${t}'`).join(',')}) NOT NULL`
-        );
-      }
-    }
-    
     // Fetch notifications
     const [notifications] = await pool.query(
       `SELECT id, type, message, related_id, 

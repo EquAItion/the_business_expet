@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { FaGoogle, FaLinkedinIn } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../layout/Navbar';
 import './auth.css';
-import { toast } from 'react-hot-toast';
+import { toast } from 'react-hot-toast';  // Make sure this is the only toast import
 import Footer from '../layout/Footer';
 
 const SocialIcons = () => (
@@ -16,6 +16,13 @@ const SocialIcons = () => (
         </a>
     </div>
 );
+                  
+// Add new interface for functionality options
+interface FunctionalityOption {
+    id: number;
+    option_value: string;
+    display_name: string;
+}
 
 const ExpertForm: React.FC = () => {
     const navigate = useNavigate();
@@ -26,8 +33,11 @@ const ExpertForm: React.FC = () => {
     const [formData, setFormData] = useState({
         name: '',
         email: '',
-        industry: ''
+        functionality: '' // Changed from industry
     });
+
+    // Add state for functionality options
+    const [functionalityOptions, setFunctionalityOptions] = useState<FunctionalityOption[]>([]);
 
     // Add new state for login form
     const [loginData, setLoginData] = useState({
@@ -78,58 +88,68 @@ const ExpertForm: React.FC = () => {
         setError('');
     };
 
-    // Update the handleSignUpSubmit function to show the password popup
+    // Update handleSignUpSubmit function
     const handleSignUpSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
 
-        // Final validation
-        if (!formData.name.trim() || !formData.email.trim() || !formData.industry.trim()) {
-            setError('All fields are required');
-            return;
-        }
-
         try {
-            // Generate a secure random password (more secure than the previous method)
-            const randomPassword = Array(10)
+            // Validate fields
+            if (!formData.name.trim() || !formData.email.trim() || !formData.functionality.trim()) {
+                setError('All fields are required');
+                return;
+            }
+
+            // Validate email format
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(formData.email)) {
+                setError('Please enter a valid email address');
+                return;
+            }
+
+            // Generate password
+            const randomPassword = Array(12)
                 .fill('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@#$%^&*')
                 .map(x => x[Math.floor(Math.random() * x.length)])
                 .join('');
             
-            // Store the generated password to display in popup
             setGeneratedPassword(randomPassword);
             
             const API_BASE_URL = import.meta.env.VITE_API_URL;
             
-            const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+            // Update to use expert-specific endpoint
+            const response = await fetch(`${API_BASE_URL}/api/auth/register/expert`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    ...formData,
-                    role: 'expert',
-                    password: randomPassword // Use the generated password
+                    name: formData.name.trim(),
+                    email: formData.email.toLowerCase().trim(),
+                    functionality: formData.functionality.trim(),
+                    password: randomPassword
                 })
             });
 
-            if (response.ok) {
-                const result = await response.json();
-                
-                // Store signup data with user_id for later profile completion
-                localStorage.setItem('expertSignupData', JSON.stringify({
-                    ...formData,
-                    user_id: result.data.user_id,
-                    token: result.data.token
-                }));
-                
-                // Show password popup
-                setShowPasswordPopup(true);
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || 'Registration failed');
             }
+
+            // Store signup data
+            localStorage.setItem('expertSignupData', JSON.stringify({
+                ...formData,
+                user_id: result.data.id,
+                token: result.data.token
+            }));
+            
+            setShowPasswordPopup(true);
 
         } catch (error) {
             console.error('Registration error:', error);
-            setError(error instanceof Error ? error.message : 'Registration failed. Please try again.');
+            setError(error instanceof Error ? error.message : 'Registration failed');
+            toast.error(error instanceof Error ? error.message : 'Registration failed');
         }
     };
 
@@ -156,74 +176,71 @@ const ExpertForm: React.FC = () => {
                 return;
             }
 
-            const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081';
+            const API_BASE_URL = import.meta.env.VITE_API_URL;
             
-            console.log('Attempting login with:', { email: loginData.email, password: '***' });
-            console.log('API URL:', API_BASE_URL);
+            console.log('Attempting expert login:', { email: loginData.email });
 
             const response = await fetch(`${API_BASE_URL}/api/auth/login/expert`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
-                body: JSON.stringify(loginData)
+                body: JSON.stringify({
+                    email: loginData.email.trim().toLowerCase(),
+                    password: loginData.password
+                })
             });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Login failed');
-            }
 
             const result = await response.json();
 
+            if (!response.ok) {
+                throw new Error(result.message || 'Login failed');
+            }
+
+            if (!result.success || !result.data) {
+                throw new Error('Invalid response format');
+            }
+
             // Store user data
             const userData = {
-                user_id: result.data.user_id,
+                id: result.data.id,
                 name: result.data.name,
                 email: result.data.email,
-                role: result.data.role,
-                token: result.data.token
+                role: 'expert',
+                token: result.data.token,
+                profile_completed: result.data.profile_completed
             };
 
             localStorage.setItem('user', JSON.stringify(userData));
-
-            toast.success('Login successful!');
             
-            // Check profile status after login
-            try {
-                const profileResponse = await fetch(`${API_BASE_URL}/api/experts/profile/${result.data.user_id}`, {
-                    headers: {
-                        'Authorization': `Bearer ${result.data.token}`
+            // Change toast.info to toast with custom styling
+            if (!result.data.profile_completed) {
+                toast('Please complete your profile', {
+                    icon: 'ℹ️',
+                    style: {
+                        background: '#3b82f6',
+                        color: '#fff'
                     }
                 });
-                
-                if (!profileResponse.ok) {
-                    // Profile doesn't exist or is incomplete
-                    toast('Please complete your profile to access the dashboard', {
-                        icon: '📝',
-                        style: {
-                            background: '#3498db',
-                            color: '#fff'
-                        }
-                    });
-                    navigate('/auth/ExpertProfileForm');
-                    return;
-                }
-                
-                // Profile exists, navigate to dashboard
-                navigate('/dashboard');
-                
-            } catch (error) {
-                // If we can't check profile, assume it's incomplete
-                console.error('Error checking profile:', error);
-                toast.info('Please complete your profile to access the dashboard');
                 navigate('/auth/ExpertProfileForm');
+                return;
             }
+
+            toast.success('Login successful!');
+            navigate('/dashboard');
 
         } catch (error) {
             console.error('Login error:', error);
-            setError(error instanceof Error ? error.message : 'Login failed');
-            toast.error(error instanceof Error ? error.message : 'Login failed');
+            const errorMessage = error instanceof Error ? error.message : 'Login failed';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            
+            // Clear password on error
+            setLoginData(prev => ({
+                ...prev,
+                password: ''
+            }));
         }
     };
 
@@ -231,7 +248,7 @@ const ExpertForm: React.FC = () => {
         e.preventDefault();
         
         // Basic validation for first step
-        if (!formData.name.trim() || !formData.email.trim() || !formData.industry.trim()) {
+        if (!formData.name.trim() || !formData.email.trim() || !formData.functionality.trim()) {
             setError('Name, email, and industry are required');
             return;
         }
@@ -262,6 +279,25 @@ const ExpertForm: React.FC = () => {
             toast.error('Failed to copy password');
           });
     };
+
+    // Add useEffect to fetch functionality options
+    useEffect(() => {
+        const fetchFunctionalities = async () => {
+            try {
+                const API_BASE_URL = import.meta.env.VITE_API_URL;
+                const response = await fetch(`${API_BASE_URL}/api/functionalities`);
+                const data = await response.json();
+                if (data.success) {
+                    setFunctionalityOptions(data.data);
+                }
+            } catch (error) {
+                console.error('Error fetching functionalities:', error);
+                setError('Failed to load functionality options');
+            }
+        };
+
+        fetchFunctionalities();
+    }, []);
 
     return (
         <>
@@ -296,15 +332,20 @@ const ExpertForm: React.FC = () => {
                                     onChange={handleInputChange}
                                     required 
                                 />
-                                <input 
-                                    type="text" 
-                                    name="industry"
+                                <select 
+                                    name="functionality"
                                     className="auth-input" 
-                                    placeholder="Industry" 
-                                    value={formData.industry}
+                                    value={formData.functionality}
                                     onChange={handleInputChange}
-                                    required 
-                                />
+                                    required
+                                >
+                                    <option value="">Select your expertise area</option>
+                                    {functionalityOptions.map(option => (
+                                        <option key={option.id} value={option.option_value}>
+                                            {option.display_name}
+                                        </option>
+                                    ))}
+                                </select>
                                 <button 
                                     type="submit"
                                     className="auth-button mt-4"

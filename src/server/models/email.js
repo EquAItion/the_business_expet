@@ -1,22 +1,24 @@
 const nodemailer = require('nodemailer');
-const connection = require("./db");
 require('dotenv').config();
 
 const ClientIp = process.env.CLIENT_ORIGIN;
 const serverIp = process.env.SERVER_ORIGIN;
 
-async function sendEmail(userId, templateName) {
+const sendEmail = async (connection, options) => {
     try {
-        // Fetch the template type based on template name
-        const [templateType] = await connection.promise().query(
-            'SELECT template_types.id FROM template_types WHERE template_types.name = ?',
-            [templateName]
+        // First ensure we're using the correct database
+        await connection.query('USE expertise_station');
+
+        // Get template type
+        const [templateType] = await connection.query(
+            "SELECT template_types.id FROM template_types WHERE template_types.name = ?",
+            [options.templateType]
         );
 
         if (!templateType[0]) return; // If template type not found
 
         // Fetch the template based on template type
-        const [template] = await connection.promise().query(
+        const [template] = await connection.query(
             'SELECT * FROM email_templates WHERE template_type = ?',
             templateType[0].id
         );
@@ -26,7 +28,7 @@ async function sendEmail(userId, templateName) {
         // Variables to hold the data that will be replaced in the template
         let sendingToEmail, data, subject, resetPasswordLink;
 
-        switch (templateName) {
+        switch (options.templateType) {
             case 'Add User': {
                 // Query to fetch user details after admin adds a user
                 const userQuery = `
@@ -40,7 +42,7 @@ async function sendEmail(userId, templateName) {
                     LEFT JOIN airport ON users.airport_id = airport.id
                     WHERE users.id = ?
                 `;
-                const [userData] = await connection.promise().query(userQuery, userId);
+                const [userData] = await connection.query(userQuery, options.userId);
                 const user = userData[0];
 
                 // Generate reset password link for new user
@@ -66,7 +68,7 @@ async function sendEmail(userId, templateName) {
                     LEFT JOIN airport ON users.airport_id = airport.id
                     WHERE users.id = ?
                 `;
-                const [userData] = await connection.promise().query(userQuery, userId);
+                const [userData] = await connection.query(userQuery, options.userId);
                 const user = userData[0];
 
                 // Generate reset password link for forgot password
@@ -92,7 +94,7 @@ async function sendEmail(userId, templateName) {
                     LEFT JOIN airport ON users.airport_id = airport.id
                     WHERE users.id = ?
                 `;
-                const [userData] = await connection.promise().query(userQuery, userId);
+                const [userData] = await connection.query(userQuery, options.userId);
                 const user = userData[0];
 
                 // Sending email to the user about role update

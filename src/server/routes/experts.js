@@ -1,9 +1,10 @@
-    const express = require('express');
+const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../server');
-
+const authenticateToken = require('../middleware/auth');
+   
 // Middleware to verify JWT token
 const verifyToken = (req, res, next) => {
     const token = req.headers.authorization?.split(' ')[1];
@@ -53,196 +54,101 @@ router.get('/profiles/:id', async (req, res) => {
 
 // Create expert profile
 router.post('/profile', verifyToken, async (req, res) => {
+    let connection;
     try {
-        // Verify user is an expert
-        if (req.user.role !== 'expert') {
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied. Expert role required.'
-            });
-        }
+        connection = await pool.getConnection();
+        
+        // Generate profile ID
+        const profileId = uuidv4();
 
+        // Destructure and validate required fields
         const {
-            firstName,
-            lastName,
+            user_id,
+            first_name,
+            last_name,
             designation,
-            dateOfBirth,
-            phoneNumber,
-            workExperience,
-            currentOrganization,
+            date_of_birth,
+            phone_number,
+            work_experience,
+            current_organization,
             location,
             expertise,
-            areasOfHelp,
-            audioPricing,
-            videoPricing,
-            chatPricing,
-            linkedin,
-            instagram,
-            youtube,
-            twitter
+            areas_of_help,
+            audio_pricing,
+            linkedin_url
         } = req.body;
 
         // Validate required fields
-        const requiredFields = ['firstName', 'lastName', 'designation', 'dateOfBirth', 'phoneNumber', 
-            'workExperience', 'currentOrganization', 'location', 'expertise', 'areasOfHelp', 
-            'audioPricing', 'videoPricing', 'chatPricing'];
-        
-        const missingFields = requiredFields.filter(field => !req.body[field]);
-        if (missingFields.length > 0) {
-            console.error('Missing required fields:', missingFields);
+        if (!user_id || !first_name || !last_name || !designation || !date_of_birth || 
+            !phone_number || !current_organization || !location || !expertise || !areas_of_help) {
             return res.status(400).json({
                 success: false,
-                message: `Missing required fields: ${missingFields.join(', ')}`
+                message: 'Missing required fields'
             });
         }
 
-        // Add validation for numeric fields
-        if (isNaN(parseFloat(audioPricing)) || isNaN(parseFloat(videoPricing)) || isNaN(parseFloat(chatPricing))) {
-            return res.status(400).json({
-                success: false,
-                message: 'Pricing fields must be valid numbers'
-            });
-        }
-
-        // Check if profile already exists
-        const [existingProfiles] = await pool.execute(
-            'SELECT id FROM expert_profiles WHERE user_id = ?',
-            [req.user.id]
-        );
-
-        if (existingProfiles.length > 0) {
-            return res.status(400).json({
-                success: false,
-                message: 'Expert profile already exists'
-            });
-        }
-
-        // Validate date format
-        const dateOfBirthObj = new Date(dateOfBirth);
-        if (isNaN(dateOfBirthObj.getTime())) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid date format for date of birth'
-            });
-        }
-
-        // Create expert profile
-        const profileId = uuidv4();
-        await pool.execute(
-            `INSERT INTO expert_profiles (
-                id, user_id, first_name, last_name, designation, date_of_birth,
-                phone_number, work_experience, current_organization, location,
-                expertise, areas_of_help, audio_pricing, video_pricing, chat_pricing,
-                linkedin_url, instagram_url, youtube_url, twitter_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                profileId,
-                req.user.id,
-                firstName,
-                lastName,
+        const query = `
+            INSERT INTO expert_profiles (
+                id,
+                user_id,
+                first_name,
+                last_name,
                 designation,
-                dateOfBirth,
-                phoneNumber,
-                workExperience,
-                currentOrganization,
+                date_of_birth,
+                phone_number,
+                work_experience,
+                current_organization,
                 location,
                 expertise,
-                areasOfHelp,
-                parseFloat(audioPricing),
-                parseFloat(videoPricing),
-                parseFloat(chatPricing),
-                linkedin || null,
-                instagram || null,
-                youtube || null,
-                twitter || null
-            ]
+                areas_of_help,
+                audio_pricing,
+                linkedin_url,
+                created_at,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`;
+
+        const params = [
+            profileId,
+            user_id,
+            first_name,
+            last_name,
+            designation,
+            date_of_birth,
+            phone_number,
+            work_experience || 0,
+            current_organization,
+            location,
+            expertise,
+            areas_of_help,
+            audio_pricing || 0,
+            linkedin_url || null
+        ];
+
+        // Log parameters for debugging
+        console.log('Query parameters:', params);
+
+        await connection.execute(query, params);
+
+        // Update user profile completion status
+        await connection.execute(
+            'UPDATE users SET profile_completed = 1 WHERE id = ?',
+            [user_id]
         );
 
         res.status(201).json({
             success: true,
-            message: 'Expert profile created successfully',
-            data: {
-                id: profileId,
-                userId: req.user.id,
-                firstName,
-                lastName,
-                designation,
-                dateOfBirth,
-                phoneNumber,
-                workExperience,
-                currentOrganization,
-                location,
-                expertise,
-                areasOfHelp,
-                audioPricing,
-                videoPricing,
-                chatPricing,
-                linkedinUrl: linkedin,
-                instagramUrl: instagram,
-                youtubeUrl: youtube,
-                twitterUrl: twitter
-            }
+            message: 'Expert profile created successfully'
         });
+
     } catch (error) {
         console.error('Error creating expert profile:', error);
-        
-        // Handle specific database errors
-        if (error.code === 'ER_NO_REFERENCED_ROW_2') {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid user reference. Please ensure you are logged in with a valid account.'
-            });
-        } else if (error.code === 'ER_DUP_ENTRY') {
-            return res.status(400).json({
-                success: false,
-                message: 'A profile already exists for this user.'
-            });
-        } else if (error.code === 'ER_TRUNCATED_WRONG_VALUE') {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid data format. Please check all field values.'
-            });
-        }
-
-        // Handle validation errors
-        if (error.name === 'ValidationError') {
-            return res.status(400).json({
-                success: false,
-                message: 'Validation error',
-                errors: error.errors
-            });
-        }
-
-        // Handle database connection errors
-        if (error.code === 'ECONNREFUSED' || error.code === 'PROTOCOL_CONNECTION_LOST') {
-            return res.status(503).json({
-                success: false,
-                message: 'Database connection error. Please try again later.'
-            });
-        }
-
-        // Handle other database errors
-        if (error.code && error.code.startsWith('ER_')) {
-            return res.status(400).json({
-                success: false,
-                message: 'Database error',
-                error: process.env.NODE_ENV === 'development' ? error.message : 'Invalid data provided'
-            });
-        }
-
-        // Handle any other unexpected errors
         res.status(500).json({
             success: false,
-            message: 'Error creating expert profile',
-            error: process.env.NODE_ENV === 'development' ? error.message : 'An unexpected error occurred'
+            message: 'Failed to create expert profile',
+            error: error.message
         });
-        
-        // Log the full error for debugging
-        console.error('Detailed error creating expert profile:', {
-            message: error.message,
-            stack: error.stack,
-            code: error.code
-        });
+    } finally {
+        if (connection) connection.release();
     }
 });
 
@@ -507,31 +413,16 @@ router.put('/profile/:user_id', async (req, res) => {
   try {
     connection = await pool.getConnection();
     const { user_id } = req.params;
-    const { section, ...updates } = req.body;
+    const { section, data } = req.body;
 
     // Debug log
-    console.log('Received update request:', {
-      user_id,
-      section,
-      updates
-    });
+    console.log('Received update request:', { user_id, section, data });
 
-    // Validate token
-    const token = req.header('Authorization')?.replace('Bearer ', '');
-    if (!token) {
-      return res.status(401).json({
+    // Validate input
+    if (!section || !data) {
+      return res.status(400).json({
         success: false,
-        message: 'Authentication required'
-      });
-    }
-
-    // Verify token
-    try {
-      jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-    } catch (err) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid token'
+        message: 'Missing required fields: section and data'
       });
     }
 
@@ -551,15 +442,19 @@ router.put('/profile/:user_id', async (req, res) => {
       case 'personal':
         query = `
           UPDATE expert_profiles 
-          SET first_name = ?, 
-              last_name = ?, 
-              designation = ?
+          SET first_name = COALESCE(?, first_name), 
+              last_name = COALESCE(?, last_name), 
+              designation = COALESCE(?, designation),
+              expertise = COALESCE(?, expertise),
+              areas_of_help = COALESCE(?, areas_of_help)
           WHERE user_id = ?
         `;
         params = [
-          updates.first_name,
-          updates.last_name,
-          updates.designation,
+          data.first_name ?? null,
+          data.last_name ?? null,
+          data.designation ?? null,
+          data.expertise ?? null,
+          data.areas_of_help ?? null,
           user_id
         ];
         break;
@@ -567,17 +462,17 @@ router.put('/profile/:user_id', async (req, res) => {
       case 'contact':
         query = `
           UPDATE expert_profiles 
-          SET current_organization = ?, 
-              location = ?, 
-              work_experience = ?,
-              phone_number = ?
+          SET current_organization = COALESCE(?, current_organization), 
+              location = COALESCE(?, location), 
+              work_experience = COALESCE(?, work_experience),
+              phone_number = COALESCE(?, phone_number)
           WHERE user_id = ?
         `;
         params = [
-          updates.current_organization,
-          updates.location,
-          updates.work_experience,
-          updates.phone_number,
+          data.current_organization ?? null,
+          data.location ?? null,
+          data.work_experience ? parseInt(data.work_experience, 10) : null,
+          data.phone_number ?? null,
           user_id
         ];
         break;
@@ -585,15 +480,15 @@ router.put('/profile/:user_id', async (req, res) => {
       case 'pricing':
         query = `
           UPDATE expert_profiles 
-          SET video_pricing = ?, 
-              audio_pricing = ?, 
-              chat_pricing = ?
+          SET video_pricing = COALESCE(?, video_pricing), 
+              audio_pricing = COALESCE(?, audio_pricing), 
+              chat_pricing = COALESCE(?, chat_pricing)
           WHERE user_id = ?
         `;
         params = [
-          updates.video_pricing ? parseFloat(updates.video_pricing) : null,
-          updates.audio_pricing ? parseFloat(updates.audio_pricing) : null,
-          updates.chat_pricing ? parseFloat(updates.chat_pricing) : null,
+          data.video_pricing ? parseFloat(data.video_pricing) : null,
+          data.audio_pricing ? parseFloat(data.audio_pricing) : null,
+          data.chat_pricing ? parseFloat(data.chat_pricing) : null,
           user_id
         ];
         break;
@@ -615,6 +510,10 @@ router.put('/profile/:user_id', async (req, res) => {
       [user_id]
     );
 
+    if (!profiles[0]) {
+      throw new Error('Failed to fetch updated profile');
+    }
+
     // Debug log
     console.log('Update successful, returning profile:', profiles[0]);
 
@@ -629,7 +528,7 @@ router.put('/profile/:user_id', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error updating profile',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: process.env.NODE_ENV === 'development' ? error.message : 'An unexpected error occurred'
     });
   } finally {
     if (connection) connection.release();
@@ -667,10 +566,10 @@ router.get('/profile/:user_id', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Profile fetch error:', error);
+    console.error('Error fetching expert profile:', error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching profile',
+      message: 'Error fetching expert profile',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   } finally {
@@ -678,7 +577,30 @@ router.get('/profile/:user_id', async (req, res) => {
   }
 });
 
-// Fetch expert profile by user_id
-// Removed duplicate route to avoid conflicts
+// Protected route - requires authentication
+router.get('/availability/:userId', authenticateToken, async (req, res) => {
+  let connection;
+  try {
+    connection = await req.app.locals.db.getConnection();
+    
+    const [availability] = await connection.execute(
+      `SELECT * FROM expert_availability WHERE user_id = ? ORDER BY day_of_week, start_time`,
+      [req.params.userId]
+    );
+
+    res.json({
+      success: true,
+      data: availability
+    });
+  } catch (error) {
+    console.error('Error fetching availability:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching availability data'
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
 
 module.exports = router;

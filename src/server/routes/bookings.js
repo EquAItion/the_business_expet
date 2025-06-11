@@ -1,3 +1,4 @@
+const authenticateToken = require('../middleware/auth');
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
@@ -591,6 +592,44 @@ router.get('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error fetching booking by ID:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch booking' });
+  }
+});
+
+// Add this route to get booking stats
+router.get('/stats/:expertId', authenticateToken, async (req, res) => {
+  let connection;
+  try {
+    connection = await req.app.locals.db.getConnection();
+    
+    // Get total completed sessions
+    const [totalSessions] = await connection.execute(`
+      SELECT COUNT(*) as count 
+      FROM bookings 
+      WHERE expert_id = ? AND status = 'completed'
+    `, [req.params.expertId]);
+
+    // Get pending bookings count
+    const [pendingBookings] = await connection.execute(`
+      SELECT COUNT(*) as count 
+      FROM bookings 
+      WHERE expert_id = ? AND status = 'pending'
+    `, [req.params.expertId]);
+
+    res.json({
+      success: true,
+      data: {
+        totalSessions: totalSessions[0].count,
+        pendingBookings: pendingBookings[0].count
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching booking stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching booking statistics'
+    });
+  } finally {
+    if (connection) connection.release();
   }
 });
 

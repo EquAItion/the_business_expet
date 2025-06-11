@@ -212,6 +212,9 @@ app.use(cors({
       'https://localhost:3000',
       'https://localhost:5173',
       'http://192.168.1.8:5173',
+      'http://localhost:5174',
+      'https://localhost:5174',
+      'http://192.168.1.8:5174',
       'http://192.168.0.118:5173',
       'https://expertisestation.com'
     ];
@@ -237,8 +240,8 @@ app.get('/api/test', (req, res) => {
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'rohitdogra@23',
-  database: 'expertise_station',
+  password: process.env.DB_PASSWORD || '',
+  database: 'expert',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
@@ -252,67 +255,6 @@ const testConnection = async () => {
     const connection = await pool.getConnection();
     console.log('Database connected successfully');
 
-    // Create database if not exists
-    await connection.query('CREATE DATABASE IF NOT EXISTS expertise_station');
-    await connection.query('USE expertise_station');
-
-    // Existing tables
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS webinar_registrations (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        name VARCHAR(255) NOT NULL,
-        profession VARCHAR(255) NOT NULL,
-        email VARCHAR(255) NOT NULL UNIQUE,
-        phone VARCHAR(20) NOT NULL,
-        area_of_interest VARCHAR(255) NOT NULL,
-        registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS seeker_profiles (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
-        name VARCHAR(100) NOT NULL,
-        email VARCHAR(100) NOT NULL,
-        industry VARCHAR(100) NOT NULL,
-        company VARCHAR(100) NOT NULL,
-        position VARCHAR(100) NOT NULL,
-        experience VARCHAR(50) NOT NULL,
-        location VARCHAR(100) NOT NULL,
-        bio TEXT NOT NULL,
-        interests VARCHAR(255) NOT NULL,
-        linkedin_url VARCHAR(255),
-        website_url VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      )
-    `);
-
-    // Create notification_tokens table (NEW)
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS notification_tokens (
-        user_id INT PRIMARY KEY,
-        token VARCHAR(255) NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      )
-    `);
-
-    // Check if users table has profile_completed column
-    const [rows] = await connection.query(`
-      SELECT COLUMN_NAME 
-      FROM INFORMATION_SCHEMA.COLUMNS 
-      WHERE TABLE_SCHEMA = DATABASE() 
-      AND TABLE_NAME = 'users' 
-      AND COLUMN_NAME = 'profile_completed'
-    `);
-    if (rows.length === 0) {
-      await connection.query(`
-        ALTER TABLE users ADD COLUMN profile_completed BOOLEAN DEFAULT FALSE
-      `);
-    }
 
     connection.release();
   } catch (error) {
@@ -341,12 +283,14 @@ const expertAvailabilityRoutes = require('./routes/ExpertAvailability');
 const bookingsRouter = require('./routes/bookings');
 const agoraTokenRouter = require('./routes/agora');
 const usersRouter = require('./routes/users');
+const functionalitiesRouter = require('./routes/functionalities');
 
 app.use('/api/profiles', profilesRouter);
 app.use('/api/experts', expertAvailabilityRoutes);
 app.use('/api/bookings', bookingsRouter);
 app.use('/api/agora', agoraTokenRouter);
 app.use('/api/users', usersRouter);
+app.use('/api/functionalities', functionalitiesRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

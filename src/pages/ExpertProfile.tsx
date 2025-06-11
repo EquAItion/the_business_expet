@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Navbar from "../components/layout/Navbar";
 import Footer from "../components/layout/Footer";
 import { Button } from "../components/ui/button";
@@ -23,7 +23,7 @@ import {
 } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { toast } from "../components/ui/use-toast";
+import { toast, useToast } from "../components/ui/use-toast";
 
 interface Expert {
   id: string;
@@ -62,7 +62,7 @@ interface BookingFormData {
   expertId: string;
   date: string;
   selectedSlot: SelectedSlot | null;
-  sessionType: 'video' | 'audio' | 'chat';
+  sessionType: 'audio';
 }
 
 interface BookingSlot {
@@ -73,7 +73,7 @@ interface BookingSlot {
   start_time: string;
   end_time: string;
   status: 'pending' | 'confirmed' | 'rejected' | 'completed';
-  session_type: 'video' | 'audio' | 'chat';
+  session_type: 'audio';
   created_at?: string;
   seeker_name?: string;
 }
@@ -89,6 +89,8 @@ const daysOfWeek = [
 ];
 
 const ExpertProfileContent = () => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
   const { id } = useParams<{ id: string }>();
   const [expert, setExpert] = useState<Expert | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,10 +105,10 @@ const ExpertProfileContent = () => {
   const [selectedDay, setSelectedDay] = useState<string>('');
   const [selectedSlot, setSelectedSlot] = useState<Availability | null>(null);
   const [bookingForm, setBookingForm] = useState<BookingFormData>({
-    expertId: '',
+    expertId: expert?.id || '',
     date: '',
     selectedSlot: null,
-    sessionType: 'video'
+    sessionType: 'audio' as const
   });
   const [calculatedPrice, setCalculatedPrice] = useState<number>(0);
   const [isBooking, setIsBooking] = useState(false);
@@ -145,79 +147,107 @@ const ExpertProfileContent = () => {
     }
   };
 
+  // Update the fetchAvailability function
   const fetchAvailability = async (userId: string) => {
     try {
       setAvailabilityLoading(true);
       setAvailabilityError(null);
 
-      const API_BASE_URL = import.meta.env.VITE_API_URL;
-      
-      // Get user data from localStorage if available
-      let authToken = null;
+      // Get user data from localStorage
       const userData = localStorage.getItem('user');
-      if (userData) {
-        try {
-          const parsedUserData = JSON.parse(userData);
-          authToken = parsedUserData.token || parsedUserData.accessToken;
-        } catch (e) {
-          console.error("Error parsing user data from localStorage:", e);
-        }
+      if (!userData) {
+        // Redirect to /auth/seeker instead of /seeker
+        navigate('/auth/seeker', { 
+          state: { 
+            from: `/expert/${id}`,
+            message: 'Please login to view expert availability' 
+          } 
+        });
+        throw new Error("Please login to view availability");
       }
-      
-      // Prepare headers
-      const headers: HeadersInit = {};
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken.trim()}`;
+
+      let parsedUserData;
+      try {
+        parsedUserData = JSON.parse(userData);
+      } catch (err) {
+        localStorage.removeItem('user');
+        // Update navigation to /auth/seeker
+        navigate('/auth/seeker');
+        throw new Error("Invalid user data");
       }
-      
-      // Make the request
+
+      const token = parsedUserData.token || parsedUserData.accessToken;
+      if (!token) {
+        localStorage.removeItem('user');
+        navigate('/login');
+        throw new Error("Authentication token not found");
+      }
+
+      const API_BASE_URL = import.meta.env.VITE_API_URL;
       const response = await fetch(`${API_BASE_URL}/api/experts/availability/${userId}`, {
-        headers
+        headers: {
+          'Authorization': `Bearer ${token.trim()}`,
+          'Content-Type': 'application/json'
+        }
       });
-      
-      console.log("Availability response status:", response.status);
-      
+
       if (!response.ok) {
         if (response.status === 401) {
-          throw new Error("Authentication required to view availability");
-        } else {
-          throw new Error("Failed to fetch availability (Status: " + response.status + ")");
+          // Clear invalid token and redirect to login
+          localStorage.removeItem('user');
+          navigate('/login', { 
+            state: { 
+              from: `/expert/${id}`,
+              message: 'Your session has expired. Please login again.' 
+            } 
+          });
+          throw new Error("Your session has expired. Please login again.");
         }
+        throw new Error(`Failed to fetch availability (Status: ${response.status})`);
       }
-      
+
       const data = await response.json();
-      console.log("Availability data:", data);
-      
-      if (data.success && Array.isArray(data.data)) {
-        // Sort availability by day of week
-        const sortedAvailability = [...data.data].sort((a, b) => {
-          const dayOrder = {
-            'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4,
-            'Friday': 5, 'Saturday': 6, 'Sunday': 7
-          };
-          return dayOrder[a.day_of_week] - dayOrder[b.day_of_week];
-        });
-        
-        setAvailability(sortedAvailability);
-      } else {
-        throw new Error(data.message || "No availability data found");
+      if (!data.success) {
+        throw new Error(data.message || "Failed to fetch availability");
       }
+
+      setAvailability(data.data || []);
     } catch (err) {
       console.error("Error fetching availability:", err);
       setAvailabilityError(err instanceof Error ? err.message : "Failed to load availability");
+      
+      // Show toast notification
+      toast({
+        title: "Authentication Required",
+        description: err instanceof Error ? err.message : "Please login to view expert availability",
+        variant: "destructive"
+      });
     } finally {
       setAvailabilityLoading(false);
     }
   };
 
   const openDrawer = () => {
-    if (expert?.user_id) {
-      console.log("Opening drawer for user_id:", expert.user_id);
-      fetchAvailability(expert.user_id);
-      setIsDrawerOpen(true);
-    } else {
+    if (!expert?.user_id) {
       console.error("No user_id available for this expert");
+      return;
     }
+
+    // Check if user is logged in before opening drawer
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      navigate('/auth/seeker', { 
+        state: { 
+          from: `/expert/${id}`,
+          message: 'Please login to schedule a meeting' 
+        } 
+      });
+      return;
+    }
+
+    console.log("Opening drawer for user_id:", expert.user_id);
+    fetchAvailability(expert.user_id);
+    setIsDrawerOpen(true);
   };
 
   const closeDrawer = () => {
@@ -243,53 +273,49 @@ const ExpertProfileContent = () => {
 
   const fetchExistingBookings = async (expertId: string) => {
     try {
-      const API_BASE_URL = import.meta.env.VITE_API_URL;
       const userData = localStorage.getItem('user');
-      
       if (!userData) {
-        console.error("User data not found in localStorage");
+        console.log("User not authenticated");
         return;
       }
-      
+
       const parsedUserData = JSON.parse(userData);
       const token = parsedUserData.token || parsedUserData.accessToken;
       
       if (!token) {
-        console.error("Auth token not found");
+        console.log("No auth token found");
         return;
       }
-      
-      console.log(`Fetching bookings from: ${API_BASE_URL}/api/bookings/expert/${expertId}`);
-      
+
+      const API_BASE_URL = import.meta.env.VITE_API_URL;
       const response = await fetch(`${API_BASE_URL}/api/bookings/expert/${expertId}`, {
         headers: {
-          'Authorization': `Bearer ${token.trim()}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       });
-      
-      console.log("Bookings response status:", response.status);
-      
+
       if (!response.ok) {
-        if (response.status === 404) {
-          // No bookings found is not an error
-          console.log("No bookings found for this expert");
-          setExistingBookings([]);
+        if (response.status === 401) {
+          // Clear invalid token and redirect to login
+          localStorage.removeItem('user');
+          navigate('/login', {
+            state: { 
+              returnUrl: `/expert/${id}`,
+              message: 'Your session has expired. Please login again.'
+            }
+          });
           return;
         }
         throw new Error(`Failed to fetch bookings: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      console.log("Bookings data:", data);
-      
       if (data.success && Array.isArray(data.data)) {
         setExistingBookings(data.data);
-      } else {
-        setExistingBookings([]);
       }
     } catch (error) {
       console.error("Error fetching bookings:", error);
-      // Don't show an error toast for this, just log it
     }
   };
 
@@ -410,13 +436,13 @@ const ExpertProfileContent = () => {
       expertId: expert?.user_id || '',
       date: dateString,
       selectedSlot: null,
-      sessionType: 'video'
+      sessionType: 'audio' as const
     });
     
     setBookingDialogOpen(true);
   };
 
-  const calculateSlotPrice = (startTime: string, endTime: string, sessionType: 'video' | 'audio' | 'chat'): number => {
+  const calculateSlotPrice = (startTime: string, endTime: string, sessionType: 'audio'): number => {
     if (!expert) return 0;
     
     const [startHour, startMinute] = startTime.split(':').map(Number);
@@ -426,18 +452,8 @@ const ExpertProfileContent = () => {
     const durationMinutes = endMinute - startMinute;
     durationHours += durationMinutes / 60;
     
-    let hourlyRate = 0;
-    switch (sessionType) {
-      case 'video':
-        hourlyRate = expert.video_pricing || 0;
-        break;
-      case 'audio':
-        hourlyRate = expert.audio_pricing || 0;
-        break;
-      case 'chat':
-        hourlyRate = expert.chat_pricing || 0;
-        break;
-    }
+    // Only use audio pricing since that's the only available session type
+    const hourlyRate = expert.audio_pricing || 0;
     
     return hourlyRate * durationHours;
   };
@@ -446,20 +462,19 @@ const ExpertProfileContent = () => {
     const { name, value } = e.target;
     
     if (name === 'sessionType') {
-      const newSessionType = value as 'video' | 'audio' | 'chat';
       setBookingForm(prev => ({
         ...prev,
-        sessionType: newSessionType,
+        sessionType: 'audio' as const,
         selectedSlot: prev.selectedSlot ? {
           ...prev.selectedSlot,
-          price: calculateSlotPrice(prev.selectedSlot.startTime, prev.selectedSlot.endTime, newSessionType)
+          price: calculateSlotPrice(prev.selectedSlot.startTime, prev.selectedSlot.endTime, 'audio' as const)
         } : null
       }));
     } else if (name === 'date') {
       setBookingForm(prev => ({
         ...prev,
         date: value,
-        selectedSlot: null // Clear selected slot when date changes
+        selectedSlot: null
       }));
     }
   };
@@ -766,7 +781,7 @@ const ExpertProfileContent = () => {
         expertId: expert?.user_id || '',
         date: '',
         selectedSlot: null,
-        sessionType: 'video'
+        sessionType: 'audio' as const
       });
       setBookingDialogOpen(false);
 
@@ -782,14 +797,26 @@ const ExpertProfileContent = () => {
     }
   };
 
+  // Check authentication status before fetching data
   useEffect(() => {
-    if (id) {
+    const checkAuth = () => {
+      const userData = localStorage.getItem('user');
+      if (!userData && id) {
+        navigate('/auth/seeker', {
+          state: { 
+            returnUrl: `/expert/${id}`,
+            message: 'Please login to view expert details'
+          }
+        });
+        return false;
+      }
+      return true;
+    };
+
+    if (id && checkAuth()) {
       fetchExpert(id);
-    } else {
-      setError("Expert ID is missing");
-      setLoading(false);
     }
-  }, [id]);
+  }, [id, navigate]);
 
   useEffect(() => {
     if (expert?.user_id) {
@@ -1068,31 +1095,9 @@ const ExpertProfileContent = () => {
               <Label htmlFor="sessionType" className="text-right">
                 Session Type
               </Label>
-              <select
-                id="sessionType"
-                name="sessionType"
-                value={bookingForm.sessionType}
-                onChange={(e) => {
-                  const newSessionType = e.target.value as 'video' | 'audio' | 'chat';
-                  setBookingForm(prev => ({
-                    ...prev,
-                    sessionType: newSessionType,
-                    selectedSlot: prev.selectedSlot ? {
-                      ...prev.selectedSlot,
-                      price: calculateSlotPrice(
-                        prev.selectedSlot.startTime,
-                        prev.selectedSlot.endTime,
-                        newSessionType
-                      )
-                    } : null
-                  }));
-                }}
-                className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <option value="video">Video Call (${expert?.video_pricing}/hr)</option>
-                <option value="audio">Audio Call (${expert?.audio_pricing}/hr)</option>
-                <option value="chat">Chat (${expert?.chat_pricing}/hr)</option>
-              </select>
+              <div className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground">
+                Audio Call (${expert?.audio_pricing}/hr)
+              </div>
             </div>
 
             {bookingForm.selectedSlot && (

@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "react-hot-toast";
-import { Badge } from '../ui/badge';
 
 const navItems = [
   { label: "Home", href: "/" },
@@ -31,6 +30,31 @@ const authenticatedNavItems = [
   // { label: "Messages", href: "/messages" },
 ];
 
+// Update UserData interface to handle both structures
+interface UserData {
+  id?: string;
+  user_id?: string; // Add this field
+  email: string;
+  token: string;
+  role: 'solution_seeker' | 'expert';
+  name?: string;
+  mobile_number?: string;
+  profile_completed?: boolean;
+}
+
+// Update the type guard to handle both id structures
+const isValidUserData = (data: any): data is UserData => {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    // Check for either id or user_id
+    ((typeof data.id === 'string') || (typeof data.user_id === 'string')) &&
+    typeof data.email === 'string' &&
+    typeof data.token === 'string' &&
+    (data.role === 'solution_seeker' || data.role === 'expert')
+  );
+};
+
 const Navbar = () => {
   const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
@@ -41,6 +65,12 @@ const Navbar = () => {
   const [userData, setUserData] = useState<{
     user_id?: string;
     role?: string;
+    user_role?: string;
+    userRole?: string;
+    name?: string;
+    email?: string;
+    first_name?: string;
+    last_name?: string;
     profile?: {
       first_name?: string;
       last_name?: string;
@@ -48,23 +78,122 @@ const Navbar = () => {
       avatar?: string;
     };
   }>({});
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [user, setUser] = useState<any>(null);
 
-  // Update user state initialization
+  // Check for authentication on component mount
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
+    const checkAuth = async () => {
       try {
-        const parsedUser = JSON.parse(storedUser);
-        setUserData(parsedUser);
-        setUser(parsedUser); // Set the user state with the parsed user data
+        const userData = localStorage.getItem('user');
+        if (!userData) {
+          console.log('No user data in localStorage');
+          setIsAuthenticated(false);
+          return;
+        }
+
+        const user = JSON.parse(userData);
+        
+        // Normalize the user ID
+        const userId = user.id || user.user_id;
+        if (!userId) {
+          throw new Error('User ID not found');
+        }
+
+        // First set basic authentication state
         setIsAuthenticated(true);
+        setUserData(user);
+
+        // Get current path
+        const currentPath = window.location.pathname;
+
+        // Skip profile check if on profile forms or login pages
+        if (currentPath.includes('/auth/SeekerProfileForm') || 
+            currentPath.includes('/auth/ExpertProfileForm') ||  // Add this line
+            currentPath === '/auth/seeker' || 
+            currentPath === '/auth/expert') {
+          return;
+        }
+
+        // If we already know profile status, use that
+        if (typeof user.profile_completed === 'boolean') {
+          if (!user.profile_completed) {
+            if (user.role === 'solution_seeker') {
+              console.log('Seeker profile incomplete, redirecting to form');
+              navigate('/auth/SeekerProfileForm');
+            } else if (user.role === 'expert') {
+              console.log('Expert profile incomplete, redirecting to form');
+              navigate('/auth/ExpertProfileForm');
+            }
+          }
+          return;
+        }
+
+        // Check profile status from API
+        const API_BASE_URL = import.meta.env.VITE_API_URL;
+        if (!API_BASE_URL) {
+          throw new Error('API URL not configured');
+        }
+
+        console.log(`Checking profile for user: ${userId}, role: ${user.role}`);
+
+        const profileEndpoint = user.role === 'expert' 
+          ? `/api/experts/profile/${userId}`  // Update this endpoint
+          : `/api/profiles/seeker/${userId}`;
+
+        const response = await fetch(`${API_BASE_URL}${profileEndpoint}`, {
+          headers: {
+            'Authorization': `Bearer ${user.token}`,
+            'Accept': 'application/json'
+          }
+        });
+
+        if (response.status === 404) {
+          // Update user data to indicate incomplete profile
+          const updatedUser = {
+            ...user,
+            profile_completed: false
+          };
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          setUserData(updatedUser);
+
+          // Redirect based on role
+          if (user.role === 'solution_seeker') {
+            console.log('Seeker profile not found, redirecting to form');
+            navigate('/auth/SeekerProfileForm');
+          } else if (user.role === 'expert') {
+            console.log('Expert profile not found, redirecting to form');
+            navigate('/auth/ExpertProfileForm');
+          }
+          return;
+        }
+
+        if (response.ok) {
+          const result = await response.json();
+          const updatedUser = {
+            ...user,
+            ...result.data,
+            profile_completed: true
+          };
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          setUserData(updatedUser);
+        }
+
       } catch (error) {
-        console.error('Error parsing user data:', error);
+        console.error('Auth check error:', error);
+        
+        // Only clear data for serious errors, not 404s
+        if (error instanceof Error && 
+            !error.message.includes('404') && 
+            !error.message.includes('Profile not found')) {
+          localStorage.clear();
+          setIsAuthenticated(false);
+          setUserData({});
+          navigate('/auth/seeker');
+        }
       }
-    }
-  }, []);
+    };
+
+    checkAuth();
+}, [navigate]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -74,31 +203,6 @@ const Navbar = () => {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-
-  // Update notification fetching to use userData instead of user
-  useEffect(() => {
-    if (!userData?.user_id) return;
-
-    const fetchUnreadCount = async () => {
-      try {
-        const API_BASE_URL = import.meta.env.VITE_API_URL;
-        const response = await fetch(`${API_BASE_URL}/api/notifications/${userData.user_id}/unread-count`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            setUnreadCount(data.count);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching unread notifications:', error);
-      }
-    };
-
-    fetchUnreadCount();
-    // Set up polling for new notifications
-    const interval = setInterval(fetchUnreadCount, 30000); // Poll every 30 seconds
-    return () => clearInterval(interval);
-  }, [userData?.user_id]);
 
   const handleRoleSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const role = e.target.value;
@@ -125,11 +229,34 @@ const Navbar = () => {
     navigate('/');
   };
 
-  // Get user's initials for avatar fallback
+  // Update the getInitials function to handle different user data structures
   const getInitials = () => {
-    const firstName = userData?.profile?.first_name || '';
-    const lastName = userData?.profile?.last_name || '';
-    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+    // Try different possible locations for name data
+    const firstName = userData?.profile?.first_name || 
+                     userData?.first_name || 
+                     userData?.name?.split(' ')[0] || '';
+    
+    const lastName = userData?.profile?.last_name || 
+                    userData?.last_name || 
+                    userData?.name?.split(' ')[1] || '';
+    
+    // If we have both first and last name
+    if (firstName && lastName) {
+      return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+    }
+    
+    // If we only have first name
+    if (firstName) {
+      return firstName.charAt(0).toUpperCase();
+    }
+    
+    // Fallback to email initial if available
+    if (userData?.email) {
+      return userData.email.charAt(0).toUpperCase();
+    }
+    
+    // Final fallback
+    return 'U';
   };
 
   // Add scroll to top handler
@@ -138,6 +265,99 @@ const Navbar = () => {
       top: 0,
       behavior: "smooth"
     });
+  };
+
+  // Enhanced getDisplayName function
+  const getDisplayName = () => {
+    // Try to get name from profile first
+    const firstName = userData?.profile?.first_name || 
+                     userData?.first_name || 
+                     userData?.name?.split(' ')[0];
+    
+    const lastName = userData?.profile?.last_name || 
+                    userData?.last_name || 
+                    userData?.name?.split(' ')[1];
+    
+    // If we have both names
+    if (firstName && lastName) {
+      return `${firstName} ${lastName}`;
+    }
+    
+    // If we have just first name
+    if (firstName) {
+      return firstName;
+    }
+    
+    // Try full name field
+    const fullName = userData?.name;
+    if (fullName) {
+      return fullName;
+    }
+    
+    // Fallback to email username (before @)
+    if (userData?.email) {
+      return userData.email.split('@')[0];
+    }
+    
+    // Final fallback
+    return 'User';
+  };
+
+  // Enhanced getDesignation function with more role detection
+  const getDesignation = () => {
+    // First try to get from profile designation
+    let designation = userData?.profile?.designation;
+    
+    // If no designation, try to format from role
+    if (!designation) {
+      const role = userData?.role || userData?.user_role || userData?.userRole;
+      
+      if (role) {
+        switch (role.toLowerCase()) {
+          case 'solution_seeker':
+          case 'solution-seeker':
+          case 'seeker':
+            designation = 'Solution Seeker';
+            break;
+          
+          case 'expert':
+          case 'domain_expert':
+          case 'domain-expert':
+            designation = 'Expert';
+            break;
+          
+          default:
+            // Format other roles nicely
+            designation = role.split(/[_-]/).map(word => 
+              word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+            ).join(' ');
+        }
+      }
+    }
+    
+    // If we have a proper designation, return it
+    if (designation && designation !== 'User') {
+      return designation;
+    }
+    
+    // Final fallback - check if we can determine role from stored data
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        const role = parsedUser.role || parsedUser.user_role;
+        
+        if (role === 'solution_seeker' || role === 'seeker') {
+          return 'Solution Seeker';
+        } else if (role === 'expert') {
+          return 'Expert';
+        }
+      } catch (e) {
+        console.error('Error parsing stored user data for role:', e);
+      }
+    }
+    
+    return 'User';
   };
 
   return (
@@ -194,10 +414,10 @@ const Navbar = () => {
                     <DropdownMenuLabel>
                       <div className="flex flex-col">
                         <span className="font-bold">
-                          {userData?.profile?.first_name || ''} {userData?.profile?.last_name || ''}
+                          {getDisplayName()}
                         </span>
                         <span className="text-sm text-muted-foreground">
-                          {userData?.profile?.designation || userData?.role || ''}
+                          {getDesignation()}
                         </span>
                       </div>
                     </DropdownMenuLabel>
@@ -205,10 +425,33 @@ const Navbar = () => {
                     
                     <DropdownMenuItem onClick={() => {
                       scrollToTop();
-                      // Get user role from localStorage
-                      const userData = JSON.parse(localStorage.getItem('user') || '{}');
-                      const dashboardPath = userData.role === 'solution_seeker' ? '/seekerdashboard' : '/dashboard';
-                      navigate(dashboardPath);
+                      
+                      // Get user data from the correct localStorage key
+                      const storedUser = localStorage.getItem('user');
+                      if (storedUser) {
+                        try {
+                          const parsedUserData = JSON.parse(storedUser);
+                          console.log('🔍 Dashboard navigation - User role:', parsedUserData.role);
+                          
+                          // Check user role and navigate accordingly
+                          if (parsedUserData.role === 'solution_seeker' || parsedUserData.role === 'seeker') {
+                            console.log('✅ Navigating to seeker dashboard');
+                            navigate('/seekerdashboard');
+                          } else if (parsedUserData.role === 'expert') {
+                            console.log('✅ Navigating to expert dashboard');
+                            navigate('/dashboard');
+                          } else {
+                            console.log('⚠ Unknown role, defaulting to general dashboard');
+                            navigate('/dashboard');
+                          }
+                        } catch (error) {
+                          console.error('❌ Error parsing user data for navigation:', error);
+                          navigate('/dashboard'); // Fallback
+                        }
+                      } else {
+                        console.log('⚠ No user data found, redirecting to login');
+                        navigate('/auth/seeker'); // Redirect to login if no user data
+                      }
                     }}>
                       <User className="mr-2 h-4 w-4" />
                       <span>Dashboard</span>
@@ -316,10 +559,10 @@ const Navbar = () => {
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">
-                      {userData?.profile?.first_name} {userData?.profile?.last_name}
+                      {getDisplayName()}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {userData?.profile?.designation || userData?.role}
+                      {getDesignation()}
                     </p>
                   </div>
                 </div>
@@ -327,10 +570,38 @@ const Navbar = () => {
                 {/* Mobile Menu Actions */}
                 <div className="space-y-1 pt-2">
                   <Link
-                    to={userData?.role === 'solution_seeker' ? '/seekerdashboard' : '/dashboard'}
-                    onClick={() => {
+                    to="#"
+                    onClick={(e) => {
+                      e.preventDefault(); // Prevent default link behavior
                       scrollToTop();
                       setIsMobileMenuOpen(false);
+                      
+                      // Get user data from the correct localStorage key
+                      const storedUser = localStorage.getItem('user');
+                      if (storedUser) {
+                        try {
+                          const parsedUserData = JSON.parse(storedUser);
+                          console.log('🔍 Mobile Dashboard navigation - User role:', parsedUserData.role);
+                          
+                          // Check user role and navigate accordingly
+                          if (parsedUserData.role === 'solution_seeker' || parsedUserData.role === 'seeker') {
+                            console.log('✅ Navigating to seeker dashboard (mobile)');
+                            navigate('/seekerdashboard');
+                          } else if (parsedUserData.role === 'expert') {
+                            console.log('✅ Navigating to expert dashboard (mobile)');
+                            navigate('/dashboard');
+                          } else {
+                            console.log('⚠ Unknown role, defaulting to general dashboard (mobile)');
+                            navigate('/dashboard');
+                          }
+                        } catch (error) {
+                          console.error('❌ Error parsing user data for mobile navigation:', error);
+                          navigate('/dashboard'); // Fallback
+                        }
+                      } else {
+                        console.log('⚠ No user data found, redirecting to login (mobile)');
+                        navigate('/auth/seeker'); // Redirect to login if no user data
+                      }
                     }}
                     className="flex items-center gap-2 px-2 py-2 text-sm text-foreground/80 hover:text-foreground
                       hover:bg-gray-50 rounded-md transition-colors"
@@ -443,6 +714,3 @@ const Navbar = () => {
 };
 
 export default Navbar;
-
-
-

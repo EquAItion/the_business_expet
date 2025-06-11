@@ -2,146 +2,178 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 
+// Update the validation function to match DB schema
+const validateProfileData = (body) => {
+    const requiredFields = [
+        'user_id',
+        'name', 
+        'email',
+        'company',
+        'position',
+        'experience',
+        'location',
+        'bio',
+        'interests'
+    ];
+
+    const missingFields = requiredFields.filter(field => !body[field]?.trim());
+    
+    // URL validations - match DB column names
+    if (body.linkedin_url && !body.linkedin_url.match(/^https?:\/\/.+/)) {
+        missingFields.push('Invalid linkedin_url format');
+    }
+    if (body.website_url && !body.website_url.match(/^https?:\/\/.+/)) {
+        missingFields.push('Invalid website_url format');
+    }
+
+    return missingFields;
+};
+
 // Create seeker profile
 router.post('/seeker', auth, async (req, res) => {
+    let connection;
     try {
-        // Get db from request object
-        const db = req.app.locals.db;
+        connection = await req.app.locals.db.getConnection();
         
-        if (!db) {
-            throw new Error('Database connection not available');
-        }
+        const user_id = req.user?.id || req.body.user_id;
         
-        console.log('Request body:', req.body);
-        console.log('User ID from token:', req.userId);
-        
-        // Try to get userId from either token or request body
-        const userId = req.userId || req.body.userId;
-        
-        if (!userId) {
+        if (!user_id) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required field: userId'
+                message: 'Missing required field: user_id'
             });
         }
-        
-        // Check each required field individually
-        const requiredFields = ['email', 'name', 'industry', 'company', 'position', 
-                               'experience', 'location', 'bio', 'interests'];
-                               
-        const missingFields = requiredFields.filter(field => !req.body[field]);
-        
+
+        const missingFields = validateProfileData(req.body);
         if (missingFields.length > 0) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields',
-                missingFields: missingFields
+                message: 'Validation failed',
+                errors: missingFields
             });
         }
-        
+
         const {
-            email,
             name,
-            industry,
+            email,
             company,
             position,
             experience,
             location,
             bio,
             interests,
-            linkedin,
-            website
+            linkedin_url,
+            website_url
         } = req.body;
 
-        // Insert into seeker_profiles table
+        // Start transaction
+        await connection.beginTransaction();
+
         try {
-            const [result] = await db.execute(
+            // First insert the profile
+            const [result] = await connection.execute(
                 `INSERT INTO seeker_profiles (
-                    user_id, name, email, industry, company, position, 
-                    experience, location, bio, interests, linkedin_url, website_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    user_id,
+                    name,
+                    email,
+                    company,
+                    position,
+                    experience,
+                    location,
+                    bio,
+                    interests,
+                    linkedin_url,
+                    website_url,
+                    created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
                 [
-                    userId, name, email, industry, company, position,
-                    experience, location, bio, interests, linkedin || '', website || ''
+                    user_id,
+                    name.trim(),
+                    email.toLowerCase(),
+                    company.trim(),
+                    position.trim(),
+                    experience.trim(),
+                    location.trim(),
+                    bio.trim(),
+                    interests.trim(),
+                    linkedin_url?.trim() || null,
+                    website_url?.trim() || null
                 ]
             );
-            
-            // Update users table to mark profile as complete
-            await db.execute(
-                `UPDATE users SET profile_completed = 1 WHERE id = ?`,
-                [userId]
+
+            // Update users table without updated_at field
+            await connection.execute(
+                `UPDATE users 
+                 SET profile_completed = 1
+                 WHERE id = ?`,
+                [user_id]
             );
+
+            await connection.commit();
 
             res.status(201).json({
                 success: true,
-                message: 'Seeker profile created successfully',
+                message: 'Profile created successfully',
                 data: {
-                    profileId: result.insertId
+                    id: result.insertId,
+                    user_id
                 }
             });
+
         } catch (dbError) {
-            console.error('Database error:', dbError);
-            return res.status(500).json({
-                success: false,
-                message: 'Database error while creating profile',
-                error: dbError.message,
-                code: dbError.code
-            });
+            await connection.rollback();
+            throw dbError;
         }
+
     } catch (error) {
-        console.error('Error creating seeker profile:', error);
+        console.error('Profile creation error:', error);
         res.status(500).json({
             success: false,
-            message: 'Failed to create seeker profile',
+            message: 'Failed to create profile',
             error: error.message
         });
+    } finally {
+        if (connection) connection.release();
     }
 });
 
-// Get seeker profile by user ID
+// Update the get profile route
 router.get('/seeker/:userId', auth, async (req, res) => {
+    let connection;
     try {
-        const db = req.app.locals.db;
+        connection = await req.app.locals.db.getConnection();
         
-        if (!db) {
-            throw new Error('Database connection not available');
-        }
-        
-        const userId = req.params.userId;
-        
-        // Verify that the requesting user can access this profile
-        if (req.userId !== userId) {
-            return res.status(403).json({
-                success: false,
-                message: 'Unauthorized access to profile'
-            });
-        }
-        
-        // Get profile from database
-        const [profiles] = await db.execute(
-            `SELECT * FROM seeker_profiles WHERE user_id = ?`,
-            [userId]
-        );
-        
-        if (profiles.length === 0) {
+        // Updated SELECT to match DB schema
+        const [profiles] = await connection.execute(`
+            SELECT 
+                sp.*,
+                u.email
+            FROM seeker_profiles sp
+            JOIN users u ON sp.user_id = u.id
+            WHERE sp.user_id = ?
+        `, [req.params.userId]);
+
+        if (!profiles || profiles.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Profile not found'
             });
         }
-        
-        // Return the profile
-        res.status(200).json({
+
+        res.json({
             success: true,
-            profile: profiles[0]
+            data: profiles[0]
         });
+
     } catch (error) {
         console.error('Error fetching seeker profile:', error);
         res.status(500).json({
             success: false,
-            message: 'Failed to fetch seeker profile',
-            error: error.message
+            message: 'Error fetching profile'
         });
+    } finally {
+        if (connection) connection.release();
     }
 });
 

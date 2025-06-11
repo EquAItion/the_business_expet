@@ -4,7 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
-import SimpleSession from "./pages/SimpleSession";
+// import SimpleSession from "./pages/SimpleSession";
 import Notifications from "./pages/Notifications";
 import Network from "./pages/Network";
 import Products from "./pages/Products";
@@ -34,9 +34,9 @@ import RefundPolicy from "./pages/RefundPolicy";
 
 import Session from "./pages/Session";
 import TestChat from './pages/TestChat';
-import DirectVideoCall from './pages/DirectVideoCall';
+// import DirectVideoCall from './pages/DirectVideoCall';
 import AudioSession from './pages/AudioSession';
-import ChatSession from './pages/ChatSession';
+// import ChatSession from './pages/ChatSession';
 
 
 const queryClient = new QueryClient();
@@ -74,12 +74,12 @@ const App = () => (
           <Route path="/refundpolicy" element={<RefundPolicy />} />
          
           <Route path="/session/:id" element={<Session />} />
-          <Route path="/simple-session/:id" element={<SimpleSession />} />
+          {/* <Route path="/simple-session/:id" element={<SimpleSession />} /> */}
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/test-chat" element={<TestChat />} />
-          <Route path="/video-call/:id" element={<DirectVideoCall />} />
+          {/* <Route path="/video-call/:id" element={<DirectVideoCall />} /> */}
           <Route path="/audio-session/:id" element={<AudioSession />} />
-          <Route path="/chat-session/:id" element={<ChatSession />} />
+          {/* <Route path="/chat-session/:id" element={<ChatSession />} /> */}
         
           <Route path="*" element={<NotFound />} />
         </Routes>

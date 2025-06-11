@@ -1,382 +1,319 @@
--- Create database if not exists
-CREATE DATABASE IF NOT EXISTS expertise_station;
-
-USE expertise_station;
-
--- Create users table
-CREATE TABLE IF NOT EXISTS users (
-  id VARCHAR(36) PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  email VARCHAR(100) NOT NULL UNIQUE,
-  password VARCHAR(255) NOT NULL,
-  role VARCHAR(20) NOT NULL,
-  industry VARCHAR(100),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Expert profiles table
-CREATE TABLE IF NOT EXISTS expert_profiles (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    user_id VARCHAR(36) NOT NULL UNIQUE,
-    first_name VARCHAR(255) NOT NULL,
-    last_name VARCHAR(255) NOT NULL,
-    designation VARCHAR(255) NOT NULL,
-    date_of_birth DATE NOT NULL,
-    phone_number VARCHAR(20) NOT NULL,
-    work_experience INT NOT NULL,
-    current_organization VARCHAR(255) NOT NULL,
-    location VARCHAR(255) NOT NULL,
-    expertise TEXT NOT NULL,
-    areas_of_help TEXT NOT NULL,
-    video_pricing DECIMAL(10,2),
-    audio_pricing DECIMAL(10,2),
-    chat_pricing DECIMAL(10,2),
-    linkedin_url VARCHAR(255),
-    twitter_url VARCHAR(255),
-    instagram_url VARCHAR(255),
-    youtube_url VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
--- Seeker profiles table
-CREATE TABLE IF NOT EXISTS seeker_profiles (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    user_id VARCHAR(36) NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) NOT NULL,
-    industry VARCHAR(100) NOT NULL,
-    company VARCHAR(100) NOT NULL,
-    position VARCHAR(100) NOT NULL,
-    experience VARCHAR(50) NOT NULL,
-    location VARCHAR(100) NOT NULL,
-    bio TEXT NOT NULL,
-    interests VARCHAR(255) NOT NULL,
-    linkedin_url VARCHAR(255),
-    website_url VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
--- Create auth_tokens table
-CREATE TABLE IF NOT EXISTS auth_tokens (
-  id VARCHAR(36) PRIMARY KEY,
-  user_id VARCHAR(36) NOT NULL,
-  token TEXT NOT NULL,
-  expires_at TIMESTAMP NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS webinar_registrations (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(255) NOT NULL,
-    profession VARCHAR(255) NOT NULL,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    phone VARCHAR(20) NOT NULL,
-    area_of_interest VARCHAR(255) NOT NULL,
-    registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS business_plans (
-    id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL,
-    business_name VARCHAR(255) NOT NULL,
-    product_description TEXT NOT NULL,
-    industry VARCHAR(100) NOT NULL,
-    target_audience TEXT NOT NULL,
-    objectives JSON NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
-CREATE TABLE expert_availability (
-  id INT NOT NULL AUTO_INCREMENT,
-  user_id VARCHAR(36) NOT NULL,  -- Changed from INT to match users.id
-  name VARCHAR(255) NULL,
-  day_of_week VARCHAR(50) NOT NULL,
-  start_time VARCHAR(20) NOT NULL,
-  end_time VARCHAR(20) NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  
-  PRIMARY KEY (id),
-  -- Composite index for efficient lookups by user_id and day_of_week
-  INDEX idx_user_day (user_id, day_of_week),
-  -- Constraint to ensure each user can only have one entry per day
-  UNIQUE KEY unique_user_day (user_id, day_of_week),
-  
-  -- Foreign key constraint now correctly references VARCHAR(36)
-  CONSTRAINT fk_user_id FOREIGN KEY (user_id) REFERENCES users(id)
-    ON DELETE CASCADE
-    ON UPDATE CASCADE
-);
-
--- Add a comment to the table for documentation
-ALTER TABLE expert_availability 
-  COMMENT 'Stores expert availability schedules by day of week';
-
-
-  -- Notifications table to store user notifications
-CREATE TABLE IF NOT EXISTS notifications (
-  id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-  user_id VARCHAR(36) NOT NULL,
-  type VARCHAR(50) NOT NULL,
-  message TEXT NOT NULL,
-  related_id VARCHAR(36),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-ALTER TABLE bookings
-ADD COLUMN start_time TIME NOT NULL AFTER appointment_date,
-ADD COLUMN end_time TIME NOT NULL AFTER start_time,
-ADD COLUMN session_type VARCHAR(20) NOT NULL AFTER end_time,
-ADD COLUMN amount DECIMAL(10,2) DEFAULT 0 AFTER session_type,
-ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at;
-
-
-
-
--- Bookings table to store session bookings between seekers and experts
-CREATE TABLE IF NOT EXISTS bookings (
-  id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-  expert_id VARCHAR(36) NOT NULL,
-  seeker_id VARCHAR(36) NOT NULL,
-  appointment_date DATE NOT NULL,
-  start_time TIME NOT NULL,
-  end_time TIME NOT NULL,
-  session_type VARCHAR(50) NOT NULL,
-  status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending, accepted, rejected, rescheduled
-  amount DECIMAL(10,2) DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (expert_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (seeker_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-
-
-
--- Run these SQL commands to verify table structure
-SHOW TABLES;
-DESCRIBE users;
-DESCRIBE expert_profiles;
-
--- Check if expert data exists
-SELECT u.*, ep.* 
-FROM users u 
-LEFT JOIN expert_profiles ep ON u.id = ep.user_id 
-WHERE u.role = 'expert';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
--- booking related new schema 
-
--- Fix bookings table structure issues
-
--- First, let's check the current structure
-SHOW CREATE TABLE bookings;
-
--- 1. Fix column naming inconsistencies
--- Check if appointment_time exists and drop it if it does
-SELECT COUNT(*) INTO @col_exists 
-FROM information_schema.columns
-WHERE table_schema = 'expertise_station'
-  AND table_name = 'bookings'
-  AND column_name = 'appointment_time';
-
-SET @stmt = IF(@col_exists > 0,
-               'ALTER TABLE bookings DROP COLUMN appointment_time',
-               'SELECT "No appointment_time column to drop"');
-
-PREPARE stmt FROM @stmt;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-
--- 2. Ensure we have the correct columns with proper types
--- Make sure start_time and end_time are VARCHAR for consistent format
-ALTER TABLE bookings MODIFY COLUMN start_time VARCHAR(10) NOT NULL;
-ALTER TABLE bookings MODIFY COLUMN end_time VARCHAR(10) NOT NULL;
-
--- 3. Standardize session_type and status as ENUMs
-ALTER TABLE bookings MODIFY COLUMN session_type ENUM('video', 'audio', 'chat') DEFAULT 'video';
-ALTER TABLE bookings MODIFY COLUMN status ENUM('pending', 'confirmed', 'completed', 'cancelled', 'rejected') DEFAULT 'pending';
-
--- 4. Add notes column if it doesn't exist
-SELECT COUNT(*) INTO @col_exists
-FROM information_schema.columns
-WHERE table_schema = 'expertise_station'
-  AND table_name = 'bookings'
-  AND column_name = 'notes';
-
-SET @stmt = IF(@col_exists = 0,
-               'ALTER TABLE bookings ADD COLUMN notes TEXT AFTER amount',
-               'SELECT "Notes column already exists"');
-
-PREPARE stmt FROM @stmt;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-
--- 5. Create indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_bookings_seeker ON bookings(seeker_id);
-CREATE INDEX IF NOT EXISTS idx_bookings_expert ON bookings(expert_id);
-CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(appointment_date);
-
--- 6. Insert test data if the table is empty
-INSERT INTO bookings (id, expert_id, seeker_id, appointment_date, start_time, end_time, session_type, status, amount, notes)
-SELECT 
-    UUID(), 
-    e.id, 
-    s.id, 
-    CURDATE() + INTERVAL (1 + FLOOR(RAND() * 7)) DAY,
-    CONCAT(8 + FLOOR(RAND() * 8), ':00 ', IF(8 + FLOOR(RAND() * 8) < 12, 'AM', 'PM')),
-    CONCAT(9 + FLOOR(RAND() * 8), ':00 ', IF(9 + FLOOR(RAND() * 8) < 12, 'AM', 'PM')),
-    ELT(1 + FLOOR(RAND() * 3), 'video', 'audio', 'chat'),
-    'confirmed',
-    50 + FLOOR(RAND() * 150),
-    'Test booking created by database script'
-FROM 
-    users e 
-    CROSS JOIN users s
-WHERE 
-    e.role = 'expert' AND s.role = 'seeker'
-    AND NOT EXISTS (SELECT 1 FROM bookings)
-LIMIT 10;
-
--- 7. Verify the structure and data
-SELECT * FROM bookings ORDER BY created_at DESC LIMIT 10;
-
-
-
-
-
-
-
-
-
-
-
--- Make sure the bookings table has the correct structure
-CREATE TABLE IF NOT EXISTS bookings (
-  id VARCHAR(36) PRIMARY KEY,
-  expert_id VARCHAR(36) NOT NULL,
-  seeker_id VARCHAR(36) NOT NULL,
-  appointment_date DATE NOT NULL,
-  start_time VARCHAR(10) NOT NULL,
-  end_time VARCHAR(10) NOT NULL,
-  session_type ENUM('video', 'audio', 'chat') DEFAULT 'video',
-  status ENUM('pending', 'confirmed', 'completed', 'cancelled', 'rejected') DEFAULT 'pending',
-  amount DECIMAL(10,2) DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  notes TEXT,
-  FOREIGN KEY (expert_id) REFERENCES users(id),
-  FOREIGN KEY (seeker_id) REFERENCES users(id)
-);
-
--- Add index for faster queries
-CREATE INDEX IF NOT EXISTS idx_bookings_seeker ON bookings(seeker_id);
-CREATE INDEX IF NOT EXISTS idx_bookings_expert ON bookings(expert_id);
-CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(appointment_date);
-
-
-
-
-
-
--- notifications table  
-
-
-CREATE TABLE notifications (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT NOT NULL,
-  type VARCHAR(50) NOT NULL,
-  message TEXT NOT NULL,
-  related_id VARCHAR(255),
-  read_status BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
--- Add read_status column to notifications table if it doesn't exist
-ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_status BOOLEAN DEFAULT FALSE;
-
-
-CREATE TABLE notification_tokens (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id VARCHAR(255) NOT NULL UNIQUE,
-  token VARCHAR(512) NOT NULL,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-
-
-
--- Create notifications table if it doesn't exist
-CREATE TABLE IF NOT EXISTS notifications (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    user_id VARCHAR(36) NOT NULL,
-    type ENUM(
-        'booking',
-        'booking_status',
-        'booking_reschedule',
-        'session_reminder',
-        'message',
-        'session_accepted',
-        'session_rejected',
-        'session_cancelled',
-        'session_rescheduled'
-    ) NOT NULL,
-    message TEXT NOT NULL,
-    related_id VARCHAR(36),
-    read_status BOOLEAN DEFAULT FALSE,
-    status_color VARCHAR(20) DEFAULT 'default',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_notifications_user_id (user_id),
-    INDEX idx_notifications_type (type),
-    INDEX idx_notifications_created_at (created_at)
-);
-
--- Create notification_tokens table if it doesn't exist
-CREATE TABLE IF NOT EXISTS notification_tokens (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    user_id VARCHAR(36) NOT NULL,
-    token TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_user_token (user_id, token(255)),
-    INDEX idx_notification_tokens_user_id (user_id)
-); 
-
--- Check if notification_token column exists
-DO $$ 
-BEGIN
-    IF NOT EXISTS (
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_name = 'users' 
-        AND column_name = 'notification_token'
-    ) THEN
-        -- Add notification_token column
-        ALTER TABLE users 
-        ADD COLUMN notification_token TEXT;
-        
-        -- Create index for faster lookups
-        CREATE INDEX idx_users_notification_token 
-        ON users(notification_token);
-    END IF;
-END $$; 
+-- MySQL dump 10.13  Distrib 8.0.42, for Win64 (x86_64)
+--
+-- Host: localhost    Database: expertise_station
+-- ------------------------------------------------------
+-- Server version	8.0.42
+USE expert;
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!50503 SET NAMES utf8 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+
+--
+-- Table structure for table `auth_tokens`
+--
+
+DROP TABLE IF EXISTS `auth_tokens`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `auth_tokens` (
+  `id` varchar(36) NOT NULL,
+  `user_id` varchar(36) NOT NULL,
+  `token` text NOT NULL,
+  `expires_at` timestamp NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `user_id` (`user_id`),
+  CONSTRAINT `auth_tokens_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `bookings`
+--
+
+DROP TABLE IF EXISTS `bookings`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `bookings` (
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
+  `expert_id` varchar(36) NOT NULL,
+  `seeker_id` varchar(36) NOT NULL,
+  `appointment_date` date NOT NULL,
+  `start_time` time NOT NULL,
+  `end_time` time NOT NULL,
+  `session_type` enum('audio') DEFAULT 'audio',
+  `status` enum('pending','confirmed','completed','cancelled','rejected','rescheduled') DEFAULT 'pending',
+  `amount` decimal(10,2) DEFAULT '0.00',
+  `notes` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_bookings_dates` (`appointment_date`,`start_time`),
+  KEY `idx_bookings_expert` (`expert_id`),
+  KEY `idx_bookings_seeker` (`seeker_id`),
+  CONSTRAINT `bookings_ibfk_1` FOREIGN KEY (`expert_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `bookings_ibfk_2` FOREIGN KEY (`seeker_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `business_plans`
+--
+
+DROP TABLE IF EXISTS `business_plans`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `business_plans` (
+  `id` varchar(36) NOT NULL,
+  `user_id` varchar(36) NOT NULL,
+  `business_name` varchar(255) NOT NULL,
+  `product_description` text NOT NULL,
+  `functionality` varchar(100) NOT NULL,
+  `target_audience` text NOT NULL,
+  `objectives` json NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `user_id` (`user_id`),
+  CONSTRAINT `business_plans_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `contact_messages`
+--
+
+DROP TABLE IF EXISTS `contact_messages`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `contact_messages` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `phone` varchar(50) NOT NULL,
+  `message` text NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `status` varchar(50) DEFAULT 'unread',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `expert_availability`
+--
+
+DROP TABLE IF EXISTS `expert_availability`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `expert_availability` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` varchar(36) NOT NULL,
+  `name` varchar(255) DEFAULT NULL,
+  `day_of_week` varchar(50) NOT NULL,
+  `start_time` varchar(20) NOT NULL,
+  `end_time` varchar(20) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_user_day` (`user_id`,`day_of_week`),
+  KEY `idx_user_day` (`user_id`,`day_of_week`),
+  CONSTRAINT `fk_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=29 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Stores expert availability schedules by day of week';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `expert_functionality_mapping`
+--
+
+DROP TABLE IF EXISTS `expert_functionality_mapping`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `expert_functionality_mapping` (
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
+  `expert_id` varchar(36) NOT NULL,
+  `functionality_id` int NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_expert_functionality` (`expert_id`,`functionality_id`),
+  KEY `functionality_id` (`functionality_id`),
+  CONSTRAINT `expert_functionality_mapping_ibfk_1` FOREIGN KEY (`expert_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `expert_functionality_mapping_ibfk_2` FOREIGN KEY (`functionality_id`) REFERENCES `expert_functionality_options` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `expert_functionality_options`
+--
+
+DROP TABLE IF EXISTS `expert_functionality_options`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `expert_functionality_options` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `option_value` varchar(100) NOT NULL,
+  `display_name` varchar(100) NOT NULL,
+  `is_active` tinyint(1) DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `expert_profiles`
+--
+
+DROP TABLE IF EXISTS `expert_profiles`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `expert_profiles` (
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
+  `user_id` varchar(36) NOT NULL,
+  `first_name` varchar(255) NOT NULL,
+  `last_name` varchar(255) NOT NULL,
+  `designation` varchar(255) NOT NULL,
+  `date_of_birth` date NOT NULL,
+  `phone_number` varchar(20) NOT NULL,
+  `work_experience` int NOT NULL,
+  `current_organization` varchar(255) NOT NULL,
+  `location` varchar(255) NOT NULL,
+  `expertise` text NOT NULL,
+  `areas_of_help` text NOT NULL,
+  `audio_pricing` decimal(10,2) DEFAULT NULL,
+  `linkedin_url` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `user_id` (`user_id`),
+  CONSTRAINT `expert_profiles_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `notification_tokens`
+--
+
+DROP TABLE IF EXISTS `notification_tokens`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `notification_tokens` (
+  `user_id` varchar(36) NOT NULL,
+  `token` varchar(255) NOT NULL,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`user_id`),
+  CONSTRAINT `notification_tokens_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `notifications`
+--
+
+DROP TABLE IF EXISTS `notifications`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `notifications` (
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
+  `user_id` varchar(36) NOT NULL,
+  `type` enum('booking','booking_status','booking_reschedule','session_reminder','message','session_accepted','session_rejected','session_cancelled','session_rescheduled') NOT NULL,
+  `message` text NOT NULL,
+  `related_id` varchar(36) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `read_status` tinyint(1) DEFAULT '0',
+  `status_color` varchar(20) DEFAULT 'default',
+  PRIMARY KEY (`id`),
+  KEY `user_id` (`user_id`),
+  CONSTRAINT `notifications_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `seeker_profiles`
+--
+
+DROP TABLE IF EXISTS `seeker_profiles`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `seeker_profiles` (
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
+  `user_id` varchar(36) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `email` varchar(100) NOT NULL,
+  `company` varchar(100) NOT NULL,
+  `position` varchar(100) NOT NULL,
+  `experience` varchar(50) NOT NULL,
+  `location` varchar(100) NOT NULL,
+  `bio` text NOT NULL,
+  `interests` varchar(255) NOT NULL,
+  `linkedin_url` varchar(255) DEFAULT NULL,
+  `website_url` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `user_id` (`user_id`),
+  CONSTRAINT `seeker_profiles_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `users`
+--
+
+DROP TABLE IF EXISTS `users`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `users` (
+  `id` varchar(36) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `email` varchar(100) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `role` varchar(20) NOT NULL,
+  `functionality` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `profile_completed` tinyint(1) DEFAULT '0',
+  `mobile_number` varchar(15) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `webinar_registrations`
+--
+
+DROP TABLE IF EXISTS `webinar_registrations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `webinar_registrations` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `profession` varchar(255) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `phone` varchar(20) NOT NULL,
+  `area_of_interest` varchar(255) NOT NULL,
+  `registration_date` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping routines for database 'expertise_station'
+--
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+-- Dump completed on 2025-06-10 15:15:05

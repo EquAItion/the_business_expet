@@ -6,105 +6,252 @@ const { v4: uuidv4 } = require('uuid');
 const { pool } = require('../server');  // Import pool from server.js
 const { sendEmail } = require('../models/email');  // Import sendEmail
 
-// Register user (expert or solution seeker)
-router.post('/register', async (req, res) => {
+// Add validation helpers
+const validateEmail = (email) => {
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    return emailRegex.test(email);
+};
+
+const validateMobileNumber = (number) => {
+    const mobileRegex = /^[6-9]\d{9}$/;
+    return mobileRegex.test(number);
+};
+
+const validatePassword = (password) => {
+    return password.length >= 8;
+};
+
+const validateSeekerFields = (data) => {
+    const errors = [];
+    
+    if (!data.name?.trim()) errors.push('Name is required');
+    if (!data.email?.trim()) errors.push('Email is required');
+    if (!data.password?.trim()) errors.push('Password is required');
+    if (!data.mobile_number?.trim()) errors.push('Mobile number is required');
+    
+    if (!validateEmail(data.email)) errors.push('Invalid email format');
+    if (!validateMobileNumber(data.mobile_number)) errors.push('Invalid mobile number format');
+    if (!validatePassword(data.password)) errors.push('Password must be at least 8 characters');
+    
+    return errors;
+};
+
+// First add expert validation helper
+const validateExpertFields = (data) => {
+    const errors = [];
+    
+    if (!data.name?.trim()) errors.push('Name is required');
+    if (!data.email?.trim()) errors.push('Email is required');
+    if (!data.password?.trim()) errors.push('Password is required');
+    if (!data.functionality?.trim()) errors.push('Functionality/Expertise is required');
+    
+    if (!validateEmail(data.email)) errors.push('Invalid email format');
+    if (!validatePassword(data.password)) errors.push('Password must be at least 8 characters');
+    
+    return errors;
+};
+
+// Separate routes for expert and seeker registration
+router.post('/register/expert', async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
-        const { name, email, password, role, industry } = req.body;
+        const { name, email, password, functionality } = req.body;
 
-        // Validate input
-        if (!name || !email || !password || !role) {
+        // Validate expert fields
+        const validationErrors = validateExpertFields({ 
+            name, 
+            email, 
+            password, 
+            functionality 
+        });
+
+        if (validationErrors.length > 0) {
             return res.status(400).json({
                 success: false,
-                message: 'All fields are required'
+                message: 'Validation failed',
+                errors: validationErrors
             });
         }
 
-        if (!['expert', 'solution_seeker'].includes(role)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid role specified'
-            });
-        }
-
-        // Check if user already exists
-        const [existingUsers] = await connection.execute(
-            'SELECT id FROM users WHERE email = ?',
-            [email]
+        // Check for existing expert
+        const [existingUser] = await connection.execute(
+            'SELECT id, email FROM users WHERE email = ?',
+            [email.toLowerCase()]
         );
 
-        if (existingUsers.length > 0) {
-            return res.status(400).json({
+        if (existingUser.length > 0) {
+            return res.status(409).json({
                 success: false,
-                message: 'User already exists'
+                message: 'Email already registered'
             });
         }
 
-        // Hash password
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-
-        // Create user
         const userId = uuidv4();
+        const hashedPassword = await bcrypt.hash(password, 10);
+
         await connection.execute(
-            'INSERT INTO users (id, name, email, password, role, industry) VALUES (?, ?, ?, ?, ?, ?)',
-            [userId, name, email, hashedPassword, role, industry]
+            `INSERT INTO users (
+                id,
+                name,
+                email,
+                password,
+                role,
+                functionality,
+                created_at,
+                profile_completed
+            ) VALUES (?, ?, ?, ?, 'expert', ?, NOW(), 0)`,
+            [
+                userId,
+                name.trim(),
+                email.toLowerCase(),
+                hashedPassword,
+                functionality
+            ]
         );
 
-        // Send signup email with password
-        await sendEmail(userId, 'Add User', password);
-
-        // Generate JWT token
         const token = jwt.sign(
-            { id: userId, role },
-            process.env.JWT_SECRET || 'your-secret-key',
+            { 
+                user_id: userId,
+                role: 'expert',
+                email: email.toLowerCase()
+            },
+            process.env.JWT_SECRET,
             { expiresIn: '24h' }
-        );
-
-        // Store token in database
-        const tokenId = uuidv4();
-        const expiresAt = new Date();
-        expiresAt.setHours(expiresAt.getHours() + 24);
-
-        await connection.execute(
-            'INSERT INTO auth_tokens (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)',
-            [tokenId, userId, token, expiresAt]
         );
 
         res.status(201).json({
             success: true,
-            message: 'User registered successfully',
+            message: 'Expert registration successful',
             data: {
                 id: userId,
-                name,
-                email,
-                role,
-                industry,
-                token
+                name: name.trim(),
+                email: email.toLowerCase(),
+                role: 'expert',
+                token,
+                profile_completed: false,
+                functionality
             }
         });
+
     } catch (error) {
-        console.error('Registration error:', error);
+        console.error('Expert registration error:', error);
         res.status(500).json({
             success: false,
-            message: 'Error registering user'
+            message: 'Registration failed',
+            error: error.message
         });
     } finally {
-        if (connection) {
-            connection.release();
+        if (connection) connection.release();
+    }
+});
+
+router.post('/register/seeker', async (req, res) => {
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const { name, email, password, mobile_number } = req.body;
+
+        // Validate seeker fields
+        const validationErrors = validateSeekerFields({ 
+            name, 
+            email, 
+            password, 
+            mobile_number 
+        });
+
+        if (validationErrors.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                errors: validationErrors
+            });
         }
+
+        // Check for existing seeker
+        const [existingUser] = await connection.execute(
+            'SELECT id, email, mobile_number FROM users WHERE email = ? OR mobile_number = ?',
+            [email.toLowerCase(), mobile_number]
+        );
+
+        if (existingUser.length > 0) {
+            const exists = existingUser[0];
+            return res.status(409).json({
+                success: false,
+                message: exists.email.toLowerCase() === email.toLowerCase() 
+                    ? 'Email already registered' 
+                    : 'Mobile number already registered'
+            });
+        }
+
+        const userId = uuidv4();
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        await connection.execute(
+            `INSERT INTO users (
+                id,
+                name,
+                email,
+                password,
+                role,
+                mobile_number,
+                created_at,
+                profile_completed
+            ) VALUES (?, ?, ?, ?, 'solution_seeker', ?, NOW(), 0)`,  // Removed extra quote
+            [
+                userId,
+                name.trim(),
+                email.toLowerCase(),
+                hashedPassword,
+                mobile_number
+            ]
+        );
+
+        const token = jwt.sign(
+            { 
+                user_id: userId,
+                role: 'solution_seeker',
+                email: email.toLowerCase()
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+
+        res.status(201).json({
+            success: true,
+            message: 'Solution seeker registration successful',
+            data: {
+                id: userId,
+                name: name.trim(),
+                email: email.toLowerCase(),
+                mobile_number,
+                role: 'solution_seeker',
+                token,
+                profile_completed: false
+            }
+        });
+
+    } catch (error) {
+        console.error('Seeker registration error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Registration failed',
+            error: error.message
+        });
+    } finally {
+        if (connection) connection.release();
     }
 });
 
 // Expert login
+// Update the expert login route to match seeker login response format
 router.post('/login/expert', async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
         const { email, password } = req.body;
 
-        console.log('Login attempt for:', email);
+        console.log('Expert login attempt:', { email });
 
         // Validate input
         if (!email || !password) {
@@ -114,64 +261,61 @@ router.post('/login/expert', async (req, res) => {
             });
         }
 
-        // Query expert user
-        const [users] = await connection.execute(
+        // Query expert with profile status
+        const [experts] = await connection.execute(
             `SELECT 
-                u.id as user_id, 
+                u.id,
                 u.name, 
                 u.email, 
-                u.password, 
+                u.password,
                 u.role,
-                u.industry
+                CASE 
+                    WHEN ep.user_id IS NOT NULL THEN true 
+                    ELSE false 
+                END as profile_completed
             FROM users u
+            LEFT JOIN expert_profiles ep ON u.id = ep.user_id
             WHERE u.email = ? AND u.role = 'expert'`,
-            [email]
+            [email.toLowerCase()]
         );
 
-        if (users.length === 0) {
-            console.log('No expert found with email:', email);
+        if (experts.length === 0) {
             return res.status(401).json({
                 success: false,
                 message: 'Invalid expert credentials'
             });
         }
 
-        const user = users[0];
-        const isValidPassword = await bcrypt.compare(password, user.password);
+        const expert = experts[0];
 
+        // Verify password
+        const isValidPassword = await bcrypt.compare(password, expert.password);
         if (!isValidPassword) {
-            console.log('Invalid password for user:', email);
             return res.status(401).json({
                 success: false,
                 message: 'Invalid expert credentials'
             });
         }
 
-        console.log('Login successful for:', email);
-
+        // Generate JWT token
         const token = jwt.sign(
-            { user_id: user.user_id, role: user.role },
-            process.env.JWT_SECRET || 'your-secret-key',
+            { 
+                user_id: expert.id,
+                role: expert.role,
+                email: expert.email
+            },
+            process.env.JWT_SECRET,
             { expiresIn: '24h' }
         );
 
-        // Store token in database
-        const tokenId = uuidv4();
-        const expiresAt = new Date();
-        expiresAt.setHours(expiresAt.getHours() + 24);
-
-        await connection.execute(
-            'INSERT INTO auth_tokens (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)',
-            [tokenId, user.user_id, token, expiresAt]
-        );
-
-        delete user.password;
+        // Remove password from response
+        delete expert.password;
 
         res.json({
             success: true,
-            message: 'Expert login successful',
+            message: 'Login successful',
             data: {
-                ...user,
+                ...expert,
                 token
             }
         });
@@ -180,7 +324,8 @@ router.post('/login/expert', async (req, res) => {
         console.error('Expert login error:', error);
         res.status(500).json({
             success: false,
-            message: 'Error logging in as expert'
+            message: 'Error during login',
+            error: error.message
         });
     } finally {
         if (connection) connection.release();
@@ -354,8 +499,8 @@ router.get('/expert/:user_id', async (req, res) => {
     }
 });
 
-// Add a route to get seeker profile data
-router.get('/seeker/:user_id', async (req, res) => {
+// Modify the seeker profile check route
+router.get('/profiles/seeker/:user_id', async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
@@ -372,15 +517,8 @@ router.get('/seeker/:user_id', async (req, res) => {
         }
 
         // Verify JWT token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         
-        if (decoded.user_id !== user_id) {
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied'
-            });
-        }
-
         // Fetch seeker profile data
         const [seekers] = await connection.execute(
             `SELECT 
@@ -388,7 +526,11 @@ router.get('/seeker/:user_id', async (req, res) => {
                 u.name,
                 u.email,
                 u.role,
-                sp.*
+                u.mobile_number,
+                CASE 
+                    WHEN sp.user_id IS NOT NULL THEN true 
+                    ELSE false 
+                END as profile_completed
             FROM users u
             LEFT JOIN seeker_profiles sp ON u.id = sp.user_id
             WHERE u.id = ? AND u.role = 'solution_seeker'`,
@@ -398,7 +540,7 @@ router.get('/seeker/:user_id', async (req, res) => {
         if (seekers.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'Seeker profile not found'
+                message: 'User not found'
             });
         }
 
@@ -406,32 +548,37 @@ router.get('/seeker/:user_id', async (req, res) => {
         const seekerData = seekers[0];
         delete seekerData.password;
 
+        // If no profile exists yet
+        if (!seekerData.profile_completed) {
+            return res.status(404).json({
+                success: false,
+                message: 'Profile not completed',
+                data: {
+                    user_id: seekerData.user_id,
+                    profile_completed: false
+                }
+            });
+        }
+
         res.json({
             success: true,
-            message: 'Seeker profile retrieved successfully',
+            message: 'Profile retrieved successfully',
             data: seekerData
         });
 
     } catch (error) {
-        console.error('Seeker profile fetch error:', error);
+        console.error('Profile fetch error:', error);
         
-        if (error.name === 'JsonWebTokenError') {
+        if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
             return res.status(401).json({
                 success: false,
-                message: 'Invalid token'
-            });
-        }
-
-        if (error.name === 'TokenExpiredError') {
-            return res.status(401).json({
-                success: false,
-                message: 'Token expired'
+                message: error.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token'
             });
         }
 
         res.status(500).json({
             success: false,
-            message: 'Error fetching seeker profile'
+            message: 'Error fetching profile'
         });
     } finally {
         if (connection) connection.release();

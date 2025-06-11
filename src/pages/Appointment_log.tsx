@@ -11,7 +11,7 @@ import {
   MapPin, 
   Video, 
   Phone, 
-  MessageSquare, 
+  MessageSquare,   
   ExternalLink,
   Calendar as CalendarIcon,
   Check, 
@@ -40,7 +40,7 @@ interface Booking {
   start_time: string;
   end_time: string;
   session_type: 'video' | 'audio' | 'chat';
-  status: 'pending' | 'confirmed' | 'rejected' | 'completed' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'rejected';
   amount: number | string;
   created_at: string;
   notes?: string;
@@ -63,10 +63,8 @@ interface UserProfile {
 
 type UserType = 'expert' | 'seeker';
 
-type NotificationType = 'booking_request' | 'booking_confirmed' | 'booking_rejected' | 'session_reminder' | 'session_cancelled' | 'session_rescheduled' | 'new_message';
-
 interface NotificationData {
-  type: NotificationType;
+  type: 'booking_request' | 'booking_accepted' | 'booking_cancelled' | 'session_reminder' | 'session_completed' | 'session_rescheduled' | 'new_message';
   session_type: string;
   session_time?: string;
   date?: string;
@@ -138,17 +136,17 @@ const AppointmentLog = () => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return <Badge className="bg-green-100 text-green-800">Confirmed</Badge>;
+        return 'bg-green-500 text-white';
       case 'pending':
-        return <Badge className="bg-yellow-100 text-yellow-800">Pending</Badge>;
+        return 'bg-yellow-500 text-white opacity-50';
       case 'completed':
-        return <Badge className="bg-blue-100 text-blue-800">Completed</Badge>;
-      case 'cancelled':
-        return <Badge className="bg-gray-100 text-gray-800">Cancelled</Badge>;
+        return 'bg-orange-500 text-white';
       case 'rejected':
-        return <Badge className="bg-red-100 text-red-800">Rejected</Badge>;
+        return 'bg-red-500 text-white';
+      case 'cancelled':
+        return 'bg-red-500 text-white';
       default:
-        return <Badge className="bg-gray-100 text-gray-800">Unknown</Badge>;
+        return 'bg-gray-500 text-white';
     }
   };
 
@@ -197,7 +195,7 @@ const AppointmentLog = () => {
     return bookings.filter(booking => {
       const dateOnly = booking.date.split('T')[0];
       const bookingEnd = parseDateTime(dateOnly, booking.end_time);
-      return bookingEnd < now || booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled';
+      return bookingEnd < now || booking.status === 'completed' || booking.status === 'cancelled';
     }).length;
   };
 
@@ -208,18 +206,15 @@ const AppointmentLog = () => {
     
     try {
       const userData = localStorage.getItem('user');
+      console.log('User data from localStorage:', userData); // Debug log
+
       let token = '';
-      
       if (userData) {
         const user = JSON.parse(userData);
         token = user.token || user.accessToken || '';
       }
       
-      if (!token) {
-        token = localStorage.getItem('token') || '';
-      }
-      
-      console.log(`Fetching seeker bookings for user ID: ${id} with token: ${token ? 'present' : 'missing'}`);
+      console.log('Using token:', token ? 'Present' : 'Missing'); // Debug log
       
       const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/seeker/${id}`, {
         method: 'GET',
@@ -228,57 +223,18 @@ const AppointmentLog = () => {
           'Content-Type': 'application/json'
         }
       });
+
+      console.log('Response status:', response.status); // Debug log
       
-      if (!response.ok) {
-        setSeekerBookings([]);
-        setErrorSeeker(`Failed to fetch seeker bookings: ${response.statusText}`);
-        console.error(`Failed to fetch seeker bookings: ${response.statusText}`);
-        return;
-      }
-      
-      const responseText = await response.text();
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (e) {
-        setErrorSeeker("Invalid response from server");
-        setSeekerBookings([]);
-        console.error("Invalid JSON response from server:", responseText);
-        return;
-      }
-      
+      const data = await response.json();
+      console.log('Bookings data:', data); // Debug log
+
       if (data && data.success && Array.isArray(data.data)) {
-        const processedBookings = data.data.map((booking: any) => ({
-          id: booking.id || `temp-${Math.random()}`,
-          expert_id: booking.expert_id || '',
-          seeker_id: booking.seeker_id || id,
-          expert_name: booking.expert_name || 'Unknown Expert',
-          seeker_name: booking.seeker_name || 'You',
-          date: booking.date || booking.appointment_date || '',
-          start_time: booking.start_time || '',
-          end_time: booking.end_time || '',
-          session_type: booking.session_type || 'video',
-          status: booking.status || 'pending',
-          amount: booking.amount || 0,
-          created_at: booking.created_at || new Date().toISOString(),
-          notes: booking.notes || '',
-          is_read: booking.is_read || false
-        }));
-        
-        console.log("Processed seeker bookings:", processedBookings);
-        setSeekerBookings(processedBookings);
-        setErrorSeeker(null);
-      } else {
-        setSeekerBookings([]);
-        if (!data.success) {
-          setErrorSeeker(data.message || "Failed to load bookings");
-          console.error("Backend returned unsuccessful response:", data);
-        }
+        setSeekerBookings(data.data);
       }
     } catch (error) {
-      setErrorSeeker("Failed to load your bookings. Please try again.");
-      setSeekerBookings([]);
-      console.error("Error fetching seeker bookings:", error);
+      console.error('Error fetching bookings:', error);
+      setErrorSeeker('Failed to load bookings');
     } finally {
       setLoadingSeeker(false);
     }
@@ -638,8 +594,21 @@ const AppointmentLog = () => {
     return now > sessionEnd;
   };
 
+  // Add function to check if session is in past
+  const isSessionInPast = (date: string, endTime: string): boolean => {
+    const now = new Date();
+    const bookingDate = new Date(date);
+    const [hours, minutes] = endTime.split(':').map(Number);
+    const bookingEnd = new Date(bookingDate);
+    bookingEnd.setHours(hours, minutes, 0, 0);
+    return bookingEnd < now;
+  };
+
   // Update the renderBookingCard function
   const renderBookingCard = (booking: Booking) => {
+    const isPast = isSessionInPast(booking.date, booking.end_time);
+    const displayStatus = isPast ? 'completed' : booking.status;
+
     // Determine if the user is viewing as a seeker or expert
     const isViewingAsSeeker = userType === 'seeker';
 
@@ -709,14 +678,8 @@ const AppointmentLog = () => {
                 </CardDescription>
               </div>
             </div>
-            <Badge variant={
-              booking.status === 'confirmed' ? 'default' :
-              booking.status === 'pending' ? 'secondary' :
-              booking.status === 'rejected' ? 'destructive' :
-              booking.status === 'completed' ? 'outline' :
-              'secondary'
-            }>
-              {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+            <Badge className={getStatusBadge(displayStatus)}>
+              {displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1)}
             </Badge>
           </div>
         </CardHeader>
@@ -754,7 +717,7 @@ const AppointmentLog = () => {
                 <User className="h-4 w-4 mr-2" />
                 View Expert Profile
               </Button>
-              {booking.status === 'confirmed' && (
+              {displayStatus === 'confirmed' && !isPast && (
                 <Button
                   size="sm"
                   className="w-full"
@@ -766,7 +729,7 @@ const AppointmentLog = () => {
                   Join {booking.session_type.charAt(0).toUpperCase() + booking.session_type.slice(1)} Session
                 </Button>
               )}
-              {booking.status === 'rejected' && !booking.is_read && booking.session_type === 'chat' && (
+              {booking.status === 'cancelled' && !booking.is_read && booking.session_type === 'chat' && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -806,7 +769,7 @@ const AppointmentLog = () => {
                     onClick={() => handleRejectBooking(booking.id)}
                   >
                     <X className="h-4 w-4 mr-2" />
-                    Reject
+                    Cancel
                   </Button>
                   <Button
                     size="sm"
@@ -830,7 +793,7 @@ const AppointmentLog = () => {
                   Start {booking.session_type.charAt(0).toUpperCase() + booking.session_type.slice(1)} Session
                 </Button>
               )}
-              {booking.status === 'rejected' && !booking.is_read && booking.session_type === 'chat' && (
+              {booking.status === 'cancelled' && !booking.is_read && booking.session_type === 'chat' && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -929,9 +892,15 @@ const AppointmentLog = () => {
           return;
         }
 
-        // Set up WebSocket connection for real-time notifications
-        const wsUrl = 'ws://192.168.1.8:8080/ws/notifications';
-        console.log('Connecting to WebSocket:', wsUrl);
+        // Fix the WebSocket URL construction
+const baseUrl = import.meta.env.VITE_API_URL;
+const wsProtocol = baseUrl.startsWith('https') ? 'wss' : 'ws';
+const wsUrl = `${wsProtocol}://${new URL(baseUrl).host}/ws/notifications`;
+
+console.log('Connecting to WebSocket:', wsUrl);
+
+const socket = new WebSocket(wsUrl);
+
         
         ws = new WebSocket(wsUrl);
         
@@ -941,17 +910,24 @@ const AppointmentLog = () => {
           if (token) {
             ws?.send(JSON.stringify({ type: 'auth', token }));
           }
-        };
-
-        ws.onmessage = (event) => {
+        };        ws.onmessage = (event) => {
           try {
             const data: NotificationData = JSON.parse(event.data);
             console.log('Received notification:', data);
             
-            // Refresh bookings when we receive a notification
-            if (userId) {
-              fetchSeekerBookings(userId);
-              fetchExpertBookings(userId);
+            // Only refresh bookings for booking-related notifications
+            if (userId && data.type && (
+              data.type.startsWith('booking_') || 
+              data.type === 'session_reminder' || 
+              data.type === 'session_completed' || 
+              data.type === 'session_rescheduled'
+            )) {
+              // Fetch only the relevant booking type based on user type
+              if (userType === 'seeker') {
+                fetchSeekerBookings(userId);
+              } else if (userType === 'expert') {
+                fetchExpertBookings(userId);
+              }
             }
 
             // Show notification if service worker is available
@@ -974,17 +950,23 @@ const AppointmentLog = () => {
               };
 
               switch (data.type) {
-                case 'booking_confirmed':
-                  notificationTitle = 'Booking Confirmed';
-                  notificationBody = `Your ${data.session_type} session for ${formatNotificationDateTime(data.date || '', data.session_time || '')} has been confirmed`;
-                  notificationTag = 'booking_confirmed';
+                case 'booking_accepted':
+                  notificationTitle = 'Booking Accepted';
+                  notificationBody = `Your ${data.session_type} session for ${formatNotificationDateTime(data.date || '', data.session_time || '')} has been accepted`;
+                  notificationTag = 'booking_accepted';
                   notificationColor = 'green';
                   break;
-                case 'booking_rejected':
-                  notificationTitle = 'Booking Rejected';
-                  notificationBody = `Your ${data.session_type} session for ${formatNotificationDateTime(data.date || '', data.session_time || '')} has been rejected`;
-                  notificationTag = 'booking_rejected';
+                case 'booking_cancelled':
+                  notificationTitle = 'Booking Cancelled';
+                  notificationBody = `Your ${data.session_type} session for ${formatNotificationDateTime(data.date || '', data.session_time || '')} has been cancelled`;
+                  notificationTag = 'booking_cancelled';
                   notificationColor = 'red';
+                  break;
+                case 'session_completed':
+                  notificationTitle = 'Session Completed';
+                  notificationBody = `Your ${data.session_type} session has been completed`;
+                  notificationTag = 'session_completed';
+                  notificationColor = 'blue';
                   break;
                 default:
                   notificationTitle = 'New Update';
@@ -1053,16 +1035,38 @@ const AppointmentLog = () => {
       const bookingEnd = new Date(bookingDate);
       bookingEnd.setHours(hours, minutes, 0, 0);
 
-      // Only show pending and confirmed bookings that haven't ended
-      // Rejected bookings will not appear in upcoming tab
-      return (booking.status === 'pending' || 
-              (booking.status === 'confirmed' && bookingEnd > now));
+      // Show pending bookings regardless of time
+      return booking.status === 'pending';
     } catch (error) {
       console.error('Error in isUpcomingBooking:', error, booking);
       return false;
     }
   };
 
+  // Update the isConfirmedBooking function
+  const isConfirmedBooking = (booking: Booking): boolean => {
+    try {
+        const now = new Date();
+        const bookingDate = new Date(booking.date);
+        const [endHours, endMinutes] = booking.end_time.split(':').map(Number);
+        const bookingEnd = new Date(bookingDate);
+        bookingEnd.setHours(endHours, endMinutes, 0, 0);
+
+        // Show confirmed bookings that:
+        // 1. Have status 'confirmed'
+        // 2. Haven't ended yet
+        // 3. For both experts and seekers
+        return (
+            booking.status === 'confirmed' && 
+            bookingEnd > now
+        );
+    } catch (error) {
+        console.error('Error in isConfirmedBooking:', error, booking);
+        return false;
+    }
+  };
+
+  // Update the isPastBooking filter:
   const isPastBooking = (booking: Booking): boolean => {
     try {
       const now = new Date();
@@ -1071,28 +1075,14 @@ const AppointmentLog = () => {
       const bookingEnd = new Date(bookingDate);
       bookingEnd.setHours(hours, minutes, 0, 0);
 
-      // Include rejected bookings in past tab
-      return booking.status === 'rejected' || 
-             booking.status === 'completed' || 
-             booking.status === 'cancelled' ||
-             (booking.status === 'confirmed' && bookingEnd < now);
+      // Only show completed and cancelled bookings in past tab
+      return (booking.status === 'completed' || booking.status === 'cancelled') && bookingEnd < now;
     } catch (error) {
       console.error('Error in isPastBooking:', error, booking);
       return false;
     }
   };
-
-  // Add a refresh interval to update booking statuses
-  useEffect(() => {
-    const refreshInterval = setInterval(() => {
-      if (userId) {
-        fetchSeekerBookings(userId);
-        fetchExpertBookings(userId);
-      }
-    }, 60000);
-
-    return () => clearInterval(refreshInterval);
-  }, [userId]);
+  // No need for periodic refresh since we update via WebSocket notifications
 
   // Add a function to mark booking as read
   const markBookingAsRead = async (bookingId: string) => {
@@ -1147,7 +1137,7 @@ const AppointmentLog = () => {
           )}
         </div>
         
-        {!localStorage.getItem('user') ? (
+        {!userId ? (
           <Card className="text-center py-12">
             <CardContent>
               <div className="space-y-4">
@@ -1160,16 +1150,16 @@ const AppointmentLog = () => {
               </div>
             </CardContent>
           </Card>
-        ) : loading ? (
+        ) : loadingSeeker || loadingExpert ? (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
             <p className="text-muted-foreground">Loading appointments...</p>
           </div>
-        ) : error ? (
+        ) : errorSeeker || errorExpert ? (
           <Card className="text-center py-12">
             <CardContent>
               <div className="space-y-4">
-                <div className="text-red-500 text-lg">{error}</div>
+                <div className="text-red-500 text-lg">{errorSeeker || errorExpert}</div>
                 <Button onClick={() => {
                   if (userId) {
                     fetchSeekerBookings(userId);
@@ -1182,115 +1172,154 @@ const AppointmentLog = () => {
             </CardContent>
           </Card>
         ) : (
-          <Tabs defaultValue="upcoming" className="space-y-6">
-            <TabsList
-              className={
-                "grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3"
-              }
-            >
-              <TabsTrigger value="upcoming" className="flex items-center gap-2">
-                Upcoming
-                {getUpcomingCount() > 0 && (
+          <Tabs defaultValue="pending" className="space-y-6">
+            <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-4">
+              <TabsTrigger value="pending" className="flex items-center gap-2">
+                Pending
+                {bookings.filter(b => b.status === 'pending').length > 0 && (
                   <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                    {getUpcomingCount()}
+                    {bookings.filter(b => b.status === 'pending').length}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="past" className="flex items-center gap-2">
-                Past
-                {getPastCount() > 0 && (
+              <TabsTrigger value="confirmed" className="flex items-center gap-2">
+                Confirmed
+                {bookings.filter(b => b.status === 'confirmed').length > 0 && (
                   <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                    {getPastCount()}
+                    {bookings.filter(b => b.status === 'confirmed').length}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="all" className="flex items-center gap-2">
-                All
-                {bookings.length > 0 && (
+              <TabsTrigger value="rejected" className="flex items-center gap-2">
+                Rejected
+                {bookings.filter(b => b.status === 'rejected').length > 0 && (
                   <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                    {bookings.length}
+                    {bookings.filter(b => b.status === 'rejected').length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="completed" className="flex items-center gap-2">
+                Completed
+                {bookings.filter(b => b.status === 'completed').length > 0 && (
+                  <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                    {bookings.filter(b => b.status === 'completed').length}
                   </Badge>
                 )}
               </TabsTrigger>
             </TabsList>
             
-            {/* Upcoming Appointments Tab */}
-            <TabsContent value="upcoming" className="space-y-4">
-              {bookings.filter(isUpcomingBooking).length === 0 ? (
-                <Card className="text-center py-12">
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="text-muted-foreground text-lg">
-                        No upcoming appointments found
-                      </div>
-                      {userType === 'seeker' && (
-                        <Button onClick={() => navigate('/network')} size="lg">
-                          Find an Expert
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
-                  {bookings
-                    .filter(isUpcomingBooking)
-                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                    .map(booking => {
-                      console.log('Rendering upcoming booking:', booking);
-                      return renderBookingCard(booking);
-                    })}
-                </div>
-              )}
-            </TabsContent>
-            
-            {/* Past Appointments Tab */}
-            <TabsContent value="past" className="space-y-4">
-              {bookings.filter(isPastBooking).length === 0 ? (
+            {/* Pending Appointments Tab */}
+            <TabsContent value="pending" className="space-y-4">
+              {bookings.filter(b => b.status === 'pending').length === 0 ? (
                 <Card className="text-center py-12">
                   <CardContent>
                     <div className="text-muted-foreground text-lg">
-                      No past appointments found
+                      No pending appointments
                     </div>
                   </CardContent>
                 </Card>
               ) : (
                 <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
-                    .filter(isPastBooking)
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .filter(b => b.status === 'pending')
+                .sort((a, b) => {
+                  const dateA = new Date(`${a.date}T${a.start_time}`);
+                  const dateB = new Date(`${b.date}T${b.start_time}`);
+                  return dateA.getTime() - dateB.getTime(); // Earliest first
+                })
                     .map(renderBookingCard)}
                 </div>
               )}
             </TabsContent>
             
-            {/* All Appointments Tab */}
-            <TabsContent value="all" className="space-y-4">
-              {bookings.length === 0 ? (
+         {/* {   Confirmed Appointments Tab } */}
+            <TabsContent value="confirmed" className="space-y-4">
+              {bookings.filter(b => b.status === 'confirmed').length === 0 ? (
                 <Card className="text-center py-12">
                   <CardContent>
                     <div className="text-muted-foreground text-lg">
-                      No appointments found
+                      No confirmed appointments
                     </div>
                   </CardContent>
                 </Card>
               ) : (
                 <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
+                    .filter(b => b.status === 'confirmed')
                     .sort((a, b) => {
-                      // Sort by date (newest first)
-                      const dateA = new Date(a.date).getTime();
-                      const dateB = new Date(b.date).getTime();
-                      if (dateA !== dateB) return dateB - dateA;
-                      
-                      // Then sort by status (pending first, then confirmed)
-                      if (a.status === 'pending' && b.status !== 'pending') return -1;
-                      if (a.status !== 'pending' && b.status === 'pending') return 1;
-                      
-                      // Finally sort by time
-                      return b.start_time.localeCompare(a.start_time);
+                      const dateA = new Date(`${a.date}T${a.start_time}`);
+                      const dateB = new Date(`${b.date}T${b.start_time}`);
+                      return dateA.getTime() - dateB.getTime();
                     })
-                    .map(booking => renderBookingCard(booking))}
+                    .map(renderBookingCard)}
+                </div>
+              )}
+            </TabsContent>
+            
+            {/* Rejected Appointments Tab */}
+            <TabsContent value="rejected" className="space-y-4">
+              {bookings.filter(b => b.status === 'rejected').length === 0 ? (
+                <Card className="text-center py-12">
+                  <CardContent>
+                    <div className="text-muted-foreground text-lg">
+                      No rejected appointments
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
+                  {bookings
+                    .filter(b => b.status === 'rejected')
+                    .sort((a, b) => {
+                      const dateA = new Date(`${a.date}T${a.start_time}`);
+                      const dateB = new Date(`${b.date}T${b.start_time}`);
+                      return dateA.getTime() - dateB.getTime(); // Oldest first (FIFO)
+                    })
+                    .map(renderBookingCard)}
+                </div>
+              )}
+            </TabsContent>
+            
+            {/* Completed Appointments Tab */}
+            <TabsContent value="completed" className="space-y-4">
+              {bookings.filter(b => {
+                const now = new Date();
+                const bookingDate = new Date(b.date);
+                const [hours, minutes] = b.end_time.split(':').map(Number);
+                const bookingEnd = new Date(bookingDate);
+                bookingEnd.setHours(hours, minutes, 0, 0);
+                
+                return (b.status === 'completed' || 
+                        (b.status === 'cancelled' && bookingEnd < now) ||
+                        (b.status === 'confirmed' && bookingEnd < now));
+              }).length === 0 ? (
+                <Card className="text-center py-12">
+                  <CardContent>
+                    <div className="text-muted-foreground text-lg">
+                      No completed appointments
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
+                  {bookings
+                    .filter(b => {
+                      const now = new Date();
+                      const bookingDate = new Date(b.date);
+                      const [hours, minutes] = b.end_time.split(':').map(Number);
+                      const bookingEnd = new Date(bookingDate);
+                      bookingEnd.setHours(hours, minutes, 0, 0);
+                      
+                      return (b.status === 'completed' || 
+                              (b.status === 'cancelled' && bookingEnd < now) ||
+                              (b.status === 'confirmed' && bookingEnd < now));
+                    })
+                    .sort((a, b) => {
+                      const dateA = new Date(`${a.date}T${a.start_time}`);
+                      const dateB = new Date(`${b.date}T${b.start_time}`);
+                      return dateB.getTime() - dateA.getTime(); // Most recent first
+                    })
+                    .map(renderBookingCard)}
                 </div>
               )}
             </TabsContent>
@@ -1371,10 +1400,3 @@ function parseDateTime(date: string, time: string) {
 }
 
 export default AppointmentLog;
-
-
-
-
-
-
-
