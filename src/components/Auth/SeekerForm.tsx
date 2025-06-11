@@ -323,19 +323,17 @@ const SeekerForm: React.FC = () => {
             console.error('Registration error:', error);
             toast.error(error instanceof Error ? error.message : 'Registration failed');
         }
-    };    // Add interface for login response
+    };    // Update the LoginResponse interface to match backend response
     interface LoginResponse {
         success: boolean;
         message: string;
         data: {
-            id: string;
-            user_id?: string;
+            user_id: string;  // Backend returns user_id, not id
             token: string;
             name: string;
             email: string;
-            mobile_number: string;
             role: 'solution_seeker';
-            profile_completed?: boolean;
+            // Note: backend doesn't return profile_completed or mobile_number in login
         }
     }
 
@@ -381,15 +379,43 @@ const SeekerForm: React.FC = () => {
                 throw new Error('Invalid response from server');
             }
 
+            // Check profile completion status using the profile endpoint
+            let profileCompleted = false;
+            let mobileNumber = '';
+            
+            try {
+                const profileCheckResponse = await fetch(`${API_BASE_URL}/api/auth/profiles/seeker/${result.data.user_id}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${result.data.token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (profileCheckResponse.ok) {
+                    const profileData = await profileCheckResponse.json();
+                    profileCompleted = profileData.data?.profile_completed || false;
+                    mobileNumber = profileData.data?.mobile_number || '';
+                    console.log('Profile check successful:', { profileCompleted, mobileNumber });
+                } else {
+                    // If profile check returns 404, profile is not completed
+                    console.log('Profile not found or not completed, redirecting to profile form');
+                    profileCompleted = false;
+                }
+            } catch (profileError) {
+                console.warn('Profile check failed:', profileError);
+                profileCompleted = false;
+            }
+
             // Normalize user data
             const userData = {
-                id: result.data.id || result.data.user_id,
+                id: result.data.user_id,  // Use user_id from backend
                 email: result.data.email,
                 name: result.data.name,
-                mobile_number: result.data.mobile_number,
+                mobile_number: mobileNumber,
                 token: result.data.token,
                 role: 'solution_seeker' as const,
-                profile_completed: result.data.profile_completed || false
+                profile_completed: profileCompleted
             };
 
             // Store normalized data
@@ -397,8 +423,11 @@ const SeekerForm: React.FC = () => {
 
             toast.success('Login successful!');
 
+            console.log('Final profile completed status:', profileCompleted);
+            console.log('Redirecting to:', profileCompleted ? 'dashboard' : 'profile form');
+
             // Redirect based on profile completion
-            if (userData.profile_completed) {
+            if (profileCompleted) {
                 navigate('/seekerdashboard', { replace: true });
             } else {
                 navigate('/auth/SeekerProfileForm', { 
