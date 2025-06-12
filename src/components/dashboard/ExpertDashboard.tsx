@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../layout/Navbar';
 import Footer from '../layout/Footer';
-import { toast } from "@/components/ui/use-toast";
+import { toast } from 'sonner';
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Save, X, Pencil, BookOpen, TrendingUp, Star, Users, Calendar, Activity, Clock } from 'lucide-react';
 import AvailabilitySection from './AvailabilitySection';
 import { API_BASE_URL } from '@/config/api';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import ReactStars from 'react-rating-stars-component';
 
 // Stored user data interface
 interface StoredUserData {
@@ -75,6 +77,17 @@ interface Booking {
   created_at: string;
 }
 
+// Add these interfaces at the top of the file
+interface Feedback {
+  id: string;
+  booking_id: string;
+  seeker_name: string;
+  rating: number;
+  review: string;
+  message: string;
+  created_at: string;
+}
+
 const ExpertDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<ExpertProfile | null>(null);
@@ -108,6 +121,26 @@ const ExpertDashboard: React.FC = () => {
     '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30',
     '22:00', '22:30', '23:00'
   ];
+
+  // Add these state variables inside the ExpertDashboard component
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
+  const [loadingFeedbacks, setLoadingFeedbacks] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+
+  // Get user data from localStorage on component mount
+  useEffect(() => {
+    const userData = localStorage.getItem('user') || localStorage.getItem('userData') || '{}';
+    try {
+      const parsedData = JSON.parse(userData);
+      setUserId(parsedData.user_id || parsedData.id);
+      setToken(parsedData.token || parsedData.accessToken);
+      console.log('User data loaded:', { userId: parsedData.user_id, token: parsedData.token });
+    } catch (err) {
+      console.error('Error parsing user data:', err);
+    }
+  }, []);
 
   // Fetch profile data
   useEffect(() => {
@@ -168,7 +201,7 @@ const ExpertDashboard: React.FC = () => {
               profile_completed: true
             };
             
-            console.log('✅ Created comprehensive profile:', comprehensiveProfile);
+            console.log(' Created comprehensive profile:', comprehensiveProfile);
             setProfile(comprehensiveProfile);
             setEditedProfile(comprehensiveProfile);
             setLoading(false);
@@ -186,13 +219,13 @@ const ExpertDashboard: React.FC = () => {
           throw new Error(result.message || 'Failed to fetch profile');
         }
 
-        console.log('✅ Profile fetched successfully:', result.data);
+        console.log(' Profile fetched successfully:', result.data);
         setProfile(result.data);
         setEditedProfile(result.data);
         setLoading(false);
 
       } catch (error) {
-        console.error('❌ Profile fetch error:', error);
+        console.error(' Profile fetch error:', error);
         setError(error instanceof Error ? error.message : 'Failed to load profile');
         setLoading(false);
         
@@ -241,11 +274,7 @@ const ExpertDashboard: React.FC = () => {
       }
     } catch (error) {
       console.error('Error fetching booking stats:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch booking statistics",
-        variant: "destructive"
-      });
+      toast.error('Failed to fetch booking statistics');
     } finally {
       setStatsLoading(false);
     }
@@ -343,7 +372,7 @@ const ExpertDashboard: React.FC = () => {
         throw new Error(result.message || 'Update failed');
       }
 
-      console.log('✅ Profile section updated:', result.data);
+      console.log(' Profile section updated:', result.data);
 
       // Update local state with the returned data
       setProfile(result.data);
@@ -356,18 +385,11 @@ const ExpertDashboard: React.FC = () => {
       }));
 
       // Show success message
-      toast({
-        title: "Success",
-        description: `${section.charAt(0).toUpperCase() + section.slice(1)} section updated successfully`,
-      });
+      toast.success(`${section.charAt(0).toUpperCase() + section.slice(1)} section updated successfully`);
 
     } catch (error) {
-      console.error('❌ Profile update error:', error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : 'Failed to update profile',
-        variant: "destructive",
-      });
+      console.error(' Profile update error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to update profile');
     }
   };
 
@@ -395,21 +417,13 @@ const ExpertDashboard: React.FC = () => {
   const handleUpdateAvailability = async () => {
     try {
       if (!selectedDay || !expertId) {
-        toast({
-          title: "Error",
-          description: "Please select a day and ensure you're logged in",
-          variant: "destructive"
-        });
+        toast.error('Please select a day and ensure you\'re logged in');
         return;
       }
 
       const userData = localStorage.getItem('user');
       if (!userData) {
-        toast({
-          title: "Error",
-          description: "Please login again",
-          variant: "destructive"
-        });
+        toast.error('Please login again');
         return;
       }
 
@@ -448,18 +462,49 @@ const ExpertDashboard: React.FC = () => {
       setStartTime('09:00');
       setEndTime('17:00');
 
-      toast({
-        title: "Success",
-        description: "Availability updated successfully"
-      });
+      toast.success('Availability updated successfully');
 
     } catch (error) {
       console.error('Error updating availability:', error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : 'Failed to update availability',
-        variant: "destructive"
+      toast.error(error instanceof Error ? error.message : 'Failed to update availability');
+    }
+  };
+
+  // Fetch feedbacks when userId and token are available
+  useEffect(() => {
+    if (userId && token) {
+      fetchFeedbacks();
+    }
+  }, [userId, token]);
+
+  const fetchFeedbacks = async () => {
+    if (!userId || !token) {
+      console.error('Missing userId or token');
+      return;
+    }
+
+    try {
+      setLoadingFeedbacks(true);
+      console.log('Fetching feedbacks for expert:', userId);
+      
+      const response = await fetch(`${API_BASE_URL}/api/session-feedback/expert/${userId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch feedbacks');
+      }
+
+      const data = await response.json();
+      console.log('Received feedbacks:', data);
+      setFeedbacks(data.feedbacks || []);
+    } catch (err) {
+      console.error('Error fetching feedbacks:', err);
+      toast.error('Failed to load feedbacks');
+    } finally {
+      setLoadingFeedbacks(false);
     }
   };
 
@@ -927,9 +972,23 @@ const ExpertDashboard: React.FC = () => {
                     <span className="text-amber-800 font-medium">Average Rating</span>
                     <span className="font-bold text-lg text-amber-600">-</span>
                   </div>
-                  <div className="flex justify-between items-center p-3 bg-violet-50 rounded-lg border border-violet-100">
+                  <div 
+                    className="flex justify-between items-center p-3 bg-violet-50 rounded-lg border border-violet-100 cursor-pointer hover:bg-violet-100 transition-colors"
+                    onClick={() => {
+                      fetchFeedbacks();
+                      setIsFeedbackModalOpen(true);
+                    }}
+                  >
                     <span className="text-violet-800 font-medium">Response Rate</span>
-                    <span className="font-bold text-lg text-slate-900">-</span>
+                    <span className="font-bold text-lg text-slate-900">
+                      {loadingFeedbacks ? (
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-violet-800"></div>
+                      ) : (
+                        feedbacks.length > 0 ? 
+                          (feedbacks.reduce((acc, curr) => acc + (curr.rating || 0), 0) / feedbacks.length).toFixed(1) : 
+                          '-'
+                      )}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -959,6 +1018,77 @@ const ExpertDashboard: React.FC = () => {
 
       {/* Footer */}
       <Footer />
+
+      {/* Add Feedback Modal */}
+      <Dialog open={isFeedbackModalOpen} onOpenChange={setIsFeedbackModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-gray-800">Session Feedback</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 mt-4">
+            {loadingFeedbacks ? (
+              <div className="flex justify-center items-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : feedbacks.length > 0 ? (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {feedbacks.map((feedback) => (
+                  <Card key={feedback.id} className="overflow-hidden">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            Session with {feedback.seeker_name}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {new Date(feedback.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        {feedback.rating && (
+                          <div className="flex items-center bg-yellow-50 px-3 py-1 rounded-full">
+                            <span className="text-yellow-600 text-lg font-bold mr-1">
+                              {feedback.rating}
+                            </span>
+                            <span className="text-yellow-600">/5</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {feedback.review && (
+                        <div className="mt-4">
+                          <p className="text-sm font-medium text-gray-700 mb-1">Review</p>
+                          <p className="text-gray-600 bg-gray-50 p-3 rounded-lg">
+                            {feedback.review}
+                          </p>
+                        </div>
+                      )}
+
+                      {feedback.message && (
+                        <div className="mt-4">
+                          <p className="text-sm font-medium text-gray-700 mb-1">Your Note</p>
+                          <p className="text-gray-600 bg-gray-50 p-3 rounded-lg">
+                            {feedback.message}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
+                        <span>Session ID: {feedback.booking_id.slice(0, 8)}...</span>
+                        <span>{new Date(feedback.created_at).toLocaleTimeString()}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-gray-50 rounded-lg">
+                <p className="text-gray-500">No feedback received yet</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

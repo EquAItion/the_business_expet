@@ -353,12 +353,20 @@ router.post('/', async (req, res) => {
 router.put('/:id/status', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, rejection_reason } = req.body;
 
     if (!['pending', 'confirmed', 'rejected', 'completed', 'cancelled', 'rescheduled'].includes(status)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid status value'
+      });
+    }
+
+    // Require rejection reason when rejecting
+    if (status === 'rejected' && !rejection_reason) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rejection reason is required when rejecting a booking'
       });
     }
 
@@ -379,9 +387,14 @@ router.put('/:id/status', async (req, res) => {
 
     const booking = existingBooking[0];
 
+    // Update booking with rejection reason if provided
     await pool.query(
-      `UPDATE bookings SET status = ?, updated_at = NOW() WHERE id = ?`,
-      [status, id]
+      `UPDATE bookings 
+       SET status = ?, 
+           rejection_reason = ?, 
+           updated_at = NOW() 
+       WHERE id = ?`,
+      [status, status === 'rejected' ? rejection_reason : null, id]
     );
 
     // Create detailed notification messages based on status
@@ -394,7 +407,7 @@ router.put('/:id/status', async (req, res) => {
       recipientId = booking.seeker_id;
     } else if (status === 'rejected') {
       const sessionType = booking.session_type || 'session';
-      notificationMessage = `Your ${sessionType} booking for ${booking.appointment_date} at ${booking.start_time} has been rejected`;
+      notificationMessage = `Your ${sessionType} booking for ${booking.appointment_date} at ${booking.start_time} has been rejected. Reason: ${rejection_reason}`;
       recipientId = booking.seeker_id;
     } else if (status === 'cancelled') {
       const [seekerResult] = await pool.query('SELECT name FROM users WHERE id = ?', [booking.seeker_id]);
@@ -425,17 +438,13 @@ router.put('/:id/status', async (req, res) => {
       data: {
         id,
         status,
+        rejection_reason: status === 'rejected' ? rejection_reason : null,
         updated_at: new Date().toISOString()
       }
     });
   } catch (error) {
     console.error('Error updating booking status:', error);
-    if (error instanceof Error) {
-      console.error('Detailed error message:', error.message);
-      res.status(500).json({ success: false, message: error.message });
-    } else {
-      res.status(500).json({ success: false, message: 'Failed to update booking status' });
-    }
+    res.status(500).json({ success: false, message: 'Failed to update booking status' });
   }
 });
 
