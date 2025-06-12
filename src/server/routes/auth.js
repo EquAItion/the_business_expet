@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { pool } = require('../server');  // Import pool from server.js
 const { sendEmail } = require('../models/email');  // Import sendEmail
+const auth = require('../middleware/auth'); // Import auth middleware
 
 // Add validation helpers
 const validateEmail = (email) => {
@@ -583,6 +584,90 @@ router.get('/profiles/seeker/:user_id', async (req, res) => {
     } finally {
         if (connection) connection.release();
     }
+});
+
+// Add these routes to your auth router
+
+// Verify if user exists
+router.get('/verify-user/:id', auth, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+
+    const [users] = await db.query(
+      'SELECT id FROM users WHERE id = ?',
+      [id]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'User exists'
+    });
+
+  } catch (error) {
+    console.error('Error verifying user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to verify user',
+      error: error.message
+    });
+  }
+});
+
+// Create new user
+router.post('/create-user', auth, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id, email, name, role } = req.body;
+
+    // Validate required fields
+    if (!id || !email || !role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields'
+      });
+    }
+
+    // Check if user already exists
+    const [existingUsers] = await db.query(
+      'SELECT id FROM users WHERE id = ?',
+      [id]
+    );
+
+    if (existingUsers.length > 0) {
+      return res.json({
+        success: true,
+        message: 'User already exists'
+      });
+    }
+
+    // Create new user
+    await db.query(
+      `INSERT INTO users (id, email, name, role, created_at)
+       VALUES (?, ?, ?, ?, NOW())`,
+      [id, email, name, role]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully'
+    });
+
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create user',
+      error: error.message
+    });
+  }
 });
 
 module.exports = router;

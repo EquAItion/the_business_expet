@@ -90,6 +90,9 @@ const AppointmentLog = () => {
   const [errorSeeker, setErrorSeeker] = useState<string | null>(null);
   const [errorExpert, setErrorExpert] = useState<string | null>(null);
   const [uniqueContacts, setUniqueContacts] = useState<UserProfile[]>([]);
+  const [expertAvailability, setExpertAvailability] = useState<any[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   // Reschedule dialog states
@@ -502,66 +505,225 @@ const AppointmentLog = () => {
   };
 
   // Open reschedule dialog
-  const openRescheduleDialog = (bookingId: string, currentDate: string) => {
+  const handleRescheduleDialog = async (bookingId: string, expertId: string) => {
     setRescheduleBookingId(bookingId);
-    setRescheduleDate(new Date(currentDate));
+    setRescheduleDate(undefined);
     setRescheduleTime('');
     setIsRescheduleOpen(true);
+    
+    // Fetch expert availability when opening dialog
+    await fetchExpertAvailability(expertId);
   };
 
   // Handle reschedule submission
   const handleRescheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rescheduleDate || !rescheduleTime) {
-      toast({
-        title: "Error",
-        description: "Please select a date and time",
-        variant: "destructive",
-      });
-      return;
-    }
+    
     try {
-      const formattedDate = rescheduleDate.toISOString().split('T')[0];
-      const userData = localStorage.getItem('user');
-      let token = '';
-      if (userData) {
-        const user = JSON.parse(userData);
-        token = user.token || user.accessToken || '';
+      if (!rescheduleDate || !rescheduleTime) {
+        toast({
+          title: "Error",
+          description: "Please select both date and time",
+          variant: "destructive",
+        });
+        return;
       }
+
+      const userData = localStorage.getItem('user');
+      if (!userData) throw new Error('Please login to continue');
+
+      const user = JSON.parse(userData);
+      const token = user.token || user.accessToken;
+
+      // Format date and time for API
+      const formattedDate = format(rescheduleDate, 'yyyy-MM-dd');
+      const formattedTime = rescheduleTime;
+
       const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/${rescheduleBookingId}/reschedule`, {
         method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           date: formattedDate,
-          start_time: rescheduleTime 
+          start_time: formattedTime,
+          end_time: addHours(parseTime(formattedTime), 1)
         })
       });
-      const responseData = await response.json();
-      if (!response.ok) {
-        throw new Error(responseData.message || 'Failed to reschedule booking');
+
+      if (!response.ok) throw new Error('Failed to reschedule appointment');
+
+      // Update local state
+      const result = await response.json();
+      
+      if (userId) {
+        await Promise.all([
+          fetchSeekerBookings(userId),
+          fetchExpertBookings(userId)
+        ]);
       }
-      const updateBooking = (booking: Booking): Booking => 
-        booking.id === rescheduleBookingId 
-          ? {...booking, date: formattedDate, start_time: rescheduleTime, status: 'confirmed'} 
-          : booking;
-      setExpertBookings(prev => prev.map(updateBooking));
-      setSeekerBookings(prev => prev.map(updateBooking));
+
       setIsRescheduleOpen(false);
       toast({
-        title: "Booking rescheduled",
-        description: "The appointment has been rescheduled successfully",
+        title: "Success",
+        description: "Appointment rescheduled successfully"
       });
-    } catch (error: any) {
+
+    } catch (error) {
+      console.error('Reschedule error:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to reschedule booking",
-        variant: "destructive",
+        description: error instanceof Error ? error.message : "Failed to reschedule appointment",
+        variant: "destructive"
       });
     }
   };
+
+  // Add function to fetch expert availability
+  const fetchExpertAvailability = async (expertId: string) => {
+    setAvailabilityLoading(true);
+    setAvailabilityError(null);
+    
+    try {
+      const userData = localStorage.getItem('user');
+      if (!userData) throw new Error('User data not found');
+      
+      const user = JSON.parse(userData);
+      const token = user.token || user.accessToken;
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/experts/availability/${expertId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch availability');
+
+      const result = await response.json();
+      setExpertAvailability(result.data);
+    } catch (error) {
+      setAvailabilityError('Failed to load expert availability');
+      console.error('Error fetching availability:', error);
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  };
+
+  // Add function to generate time slots
+  const generateTimeSlots = (start: string, end: string): string[] => {
+    const slots: string[] = [];
+    const [startHour] = start.split(':').map(Number);
+    const [endHour] = end.split(':').map(Number);
+    
+    for (let hour = startHour; hour < endHour; hour++) {
+      slots.push(`${hour.toString().padStart(2, '0')}:00`);
+    }
+    
+    return slots;
+  };
+
+  // Update the Reschedule Dialog component
+  const RescheduleDialog = () => (
+    <Dialog open={isRescheduleOpen} onOpenChange={setIsRescheduleOpen}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Reschedule Appointment</DialogTitle>
+          <DialogDescription>
+            Select a new date and time for your appointment
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+          {availabilityLoading ? (
+            <div className="flex items-center justify-center p-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : availabilityError ? (
+            <div className="text-center text-red-500 p-4">
+              {availabilityError}
+            </div>
+          ) : expertAvailability.length === 0 ? (
+            <div className="text-center text-muted-foreground p-4">
+              No availability found for this expert
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {expertAvailability.map((day, index) => (
+                <Card key={index} className="p-4">
+                  <h3 className="font-semibold mb-2">{day.day_of_week}</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {generateTimeSlots(day.start_time, day.end_time).map((time) => (
+                      <Button
+                        key={time}
+                        variant="outline"
+                        className={cn(
+                          "justify-start text-left font-normal",
+                          rescheduleTime === time && "border-primary"
+                        )}
+                        onClick={() => {
+                          const date = getDateFromDayOfWeek(day.day_of_week);
+                          setRescheduleDate(date);
+                          setRescheduleTime(time);
+                        }}
+                      >
+                        {format(parseTime(time), "h:mm a")}
+                      </Button>
+                    ))}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsRescheduleOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={!rescheduleDate || !rescheduleTime}
+            onClick={handleRescheduleSubmit}
+          >
+            Confirm Reschedule
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  // Add helper function to get date from day of week
+  const getDateFromDayOfWeek = (dayName: string): Date => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const today = new Date();
+    const currentDay = today.getDay();
+    const targetDay = days.indexOf(dayName);
+    const daysUntilTarget = targetDay - currentDay;
+    
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + (daysUntilTarget >= 0 ? daysUntilTarget : 7 + daysUntilTarget));
+    
+    return targetDate;
+  };
+
+  // Update the openRescheduleDialog function
+  const openRescheduleDialog = async (bookingId: string, expertId: string) => {
+    setRescheduleBookingId(bookingId);
+    setRescheduleDate(undefined);
+    setRescheduleTime('');
+    setIsRescheduleOpen(true);
+    
+    // Fetch expert availability when opening dialog
+    await fetchExpertAvailability(expertId);
+  };
+
+  // Update the handleRescheduleSubmit function
+  // Function is already defined above - removing duplicate
 
   // Format amount helper
   const formatAmount = (amount: number | string): string => {
@@ -757,7 +919,7 @@ const AppointmentLog = () => {
                     size="sm"
                     variant="outline"
                     className="w-full"
-                    onClick={() => openRescheduleDialog(booking.id, booking.date)}
+                    onClick={() => handleRescheduleDialog(booking.id, booking.date)}
                   >
                     <CalendarClock className="h-4 w-4 mr-2" />
                     Reschedule
@@ -1398,5 +1560,19 @@ function parseDateTime(date: string, time: string) {
   baseDate.setHours(hours, minutes, 0, 0);
   return baseDate;
 }
+
+// Add these helper functions
+const parseTime = (timeString: string): Date => {
+  const [hours, minutes] = timeString.split(':').map(Number);
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+};
+
+const addHours = (date: Date, hours: number): string => {
+  const newDate = new Date(date);
+  newDate.setHours(date.getHours() + hours);
+  return format(newDate, 'HH:mm');
+};
 
 export default AppointmentLog;

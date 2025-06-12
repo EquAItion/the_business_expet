@@ -4,14 +4,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from '@/components/ui/use-toast';
 import { Clock } from 'lucide-react';
 
-interface AvailabilityData {
+interface ExpertAvailability {
   day_of_week: string;
   start_time: string;
   end_time: string;
 }
 
 interface AvailabilitySectionProps {
-  selectedDay: string | undefined;
+  selectedDay: string;
   setSelectedDay: (day: string) => void;
   startTime: string;
   endTime: string;
@@ -21,7 +21,9 @@ interface AvailabilitySectionProps {
   TIME_OPTIONS: string[];
 }
 
-const AvailabilitySection: React.FC<AvailabilitySectionProps> = ({
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+
+export const AvailabilitySection: React.FC<AvailabilitySectionProps> = ({
   selectedDay,
   setSelectedDay,
   startTime,
@@ -32,54 +34,54 @@ const AvailabilitySection: React.FC<AvailabilitySectionProps> = ({
   TIME_OPTIONS,
 }) => {
   const [isUpdating, setIsUpdating] = useState(false);
-  const [availabilityData, setAvailabilityData] = useState<AvailabilityData[]>([]);
+  const [availabilityData, setAvailabilityData] = useState<ExpertAvailability[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Function to fetch availability data
-  const fetchAvailabilityData = async () => {
-    setIsLoading(true);
+  // Update the fetchAvailability function
+  const fetchAvailability = async () => {
     try {
+      setIsLoading(true);
       const userData = localStorage.getItem('user');
-      if (!userData) {
-        return;
-      }
+      if (!userData) return;
 
-      const parsedUserData = JSON.parse(userData);
-      const token = parsedUserData.token || parsedUserData.accessToken;
-      const id = parsedUserData.id || parsedUserData.user_id;
+      const user = JSON.parse(userData);
+      const token = user.token || user.accessToken;
+      const id = user.id;
 
-      if (!token || !id) {
-        return;
-      }
+      if (!token || !id) return;
 
-      const API_BASE_URL = import.meta.env.VITE_API_URL;
+      console.log('🔍 Fetching availability for expert:', id);
+
       const response = await fetch(`${API_BASE_URL}/api/experts/availability/${id}`, {
-        method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token.trim()}`
+          'Authorization': `Bearer ${token}`
         }
       });
 
+      const result = await response.json();
+
       if (!response.ok) {
-        throw new Error('Failed to fetch availability data');
+        throw new Error(result.message || 'Failed to fetch availability');
       }
 
-      const data = await response.json();
-      if (data.success && Array.isArray(data.data)) {
-        setAvailabilityData(data.data);
+      if (Array.isArray(result.data)) {
+        console.log('✅ Found availability slots:', result.data.length);
+        setAvailabilityData(result.data);
       }
+
     } catch (error) {
-      console.error('Error fetching availability data:', error);
+      console.error('❌ Error fetching availability:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load availability schedule",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Fetch availability data on component mount
-  useEffect(() => {
-    fetchAvailabilityData();
-  }, []);
-
+  // Update the handleUpdateAvailability function
   const handleUpdateAvailability = async () => {
     if (!selectedDay) {
       toast({
@@ -93,60 +95,55 @@ const AvailabilitySection: React.FC<AvailabilitySectionProps> = ({
     setIsUpdating(true);
 
     try {
-      // Get auth data from localStorage
       const userData = localStorage.getItem('user');
       if (!userData) {
-        throw new Error('Authentication information missing');
+        throw new Error('Please log in again');
       }
 
-      const parsedUserData = JSON.parse(userData);
-      const token = parsedUserData.token || parsedUserData.accessToken;
-      const id = parsedUserData.id || parsedUserData.user_id;
-      const name = parsedUserData.name || 
-                  (parsedUserData.first_name && parsedUserData.last_name ? 
-                    `${parsedUserData.first_name} ${parsedUserData.last_name}` : 
-                    'Expert User');
+      const user = JSON.parse(userData);
+      const token = user.token || user.accessToken;
+      const id = user.id;
+      const name = user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim();
 
       if (!token || !id) {
-        throw new Error('Authentication information incomplete');
+        throw new Error('Invalid authentication data');
       }
 
-      // Make API call to update availability
-      const API_BASE_URL = import.meta.env.VITE_API_URL;
+      console.log('📝 Updating availability for expert:', id);
+
       const response = await fetch(`${API_BASE_URL}/api/experts/availability/${id}`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token.trim()}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+          user_id: id,
           day_of_week: selectedDay,
           start_time: startTime,
           end_time: endTime,
-          name: name
+          name
         })
       });
 
-      const responseText = await response.text();
-      
+      const result = await response.json();
+
       if (!response.ok) {
-        throw new Error(`Failed to update availability: ${responseText}`);
+        throw new Error(result.message || 'Failed to update availability');
       }
 
-      const result = responseText ? JSON.parse(responseText) : {};
-
+      console.log('✅ Availability updated successfully');
+      
       toast({
         title: "Success",
-        description: `Availability for ${selectedDay} updated successfully`,
+        description: `Availability for ${selectedDay} updated successfully`
       });
 
-      // Refresh availability data
-      fetchAvailabilityData();
-
-      // Call parent component's function
+      await fetchAvailability();
       onUpdateAvailability();
+
     } catch (error) {
-      console.error('Error updating availability:', error);
+      console.error('❌ Error updating availability:', error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to update availability",
@@ -157,133 +154,92 @@ const AvailabilitySection: React.FC<AvailabilitySectionProps> = ({
     }
   };
 
+  useEffect(() => {
+    fetchAvailability();
+  }, []);
+
   return (
-    <>
-      {/* Availability Update Card */}
-      <div className="col-span-1 space-y-3 bg-card p-4 rounded-lg border">
-        <h3 className="font-medium text-sm flex justify-between items-center">
-          Set Weekly Availability
-        </h3>
-        {/* Day Selection */}
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">Select day of week:</p>
-          <div className="flex justify-between gap-1">
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <Select value={selectedDay} onValueChange={setSelectedDay}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select day" />
+          </SelectTrigger>
+          <SelectContent>
             {WEEKDAYS.map((day) => (
-              <Button
-                key={day}
-                variant={selectedDay === day ? 'default' : 'outline'}
-                size="sm"
-                className="h-9 w-9 p-0 rounded-full"
-                onClick={() => setSelectedDay(day)}
-              >
-                {day[0]}
-              </Button>
+              <SelectItem key={day} value={day}>
+                {day}
+              </SelectItem>
             ))}
-          </div>
-        </div>
-        {/* Time Range Selection */}
-        {selectedDay && (
-          <div className="space-y-2 mt-4">
-            <p className="text-xs text-muted-foreground">Set available hours for {selectedDay}:</p>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">Start Time</p>
-                <Select value={startTime} onValueChange={(value) => onTimeChange('start', value)}>
-                  <SelectTrigger className="text-xs h-8">
-                    <SelectValue placeholder="Start Time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIME_OPTIONS.map((time) => (
-                      <SelectItem key={`start-${time}`} value={time}>
-                        {time}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">End Time</p>
-                <Select value={endTime} onValueChange={(value) => onTimeChange('end', value)}>
-                  <SelectTrigger className="text-xs h-8">
-                    <SelectValue placeholder="End Time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIME_OPTIONS.slice(TIME_OPTIONS.indexOf(startTime) + 1).map((time) => (
-                      <SelectItem key={`end-${time}`} value={time}>
-                        {time}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-        )}
-        <Button 
-          size="sm" 
-          className="w-full text-sm mt-4" 
-          onClick={handleUpdateAvailability} 
-          disabled={!selectedDay || isUpdating}
-        >
-          {isUpdating ? "Updating..." : "Update Availability"}
-        </Button>
+          </SelectContent>
+        </Select>
+
+        <Select value={startTime} onValueChange={(value) => onTimeChange('start', value)}>
+          <SelectTrigger>
+            <Clock className="mr-2 h-4 w-4" />
+            <SelectValue placeholder="Start time" />
+          </SelectTrigger>
+          <SelectContent>
+            {TIME_OPTIONS.map((time) => (
+              <SelectItem key={time} value={time}>
+                {time}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={endTime} onValueChange={(value) => onTimeChange('end', value)}>
+          <SelectTrigger>
+            <Clock className="mr-2 h-4 w-4" />
+            <SelectValue placeholder="End time" />
+          </SelectTrigger>
+          <SelectContent>
+            {TIME_OPTIONS.map((time) => (
+              <SelectItem key={time} value={time}>
+                {time}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Current Schedule Card */}
-      <div className="col-span-1 space-y-3 bg-card p-4 rounded-lg border mt-4">
-        <h3 className="font-medium text-sm flex justify-between items-center">
-          Your Current Schedule
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-6 px-2 text-xs"
-            onClick={fetchAvailabilityData}
-            disabled={isLoading}
-          >
-            {isLoading ? "Loading..." : "Refresh"}
-          </Button>
-        </h3>
-        
+      <Button 
+        onClick={handleUpdateAvailability} 
+        disabled={!selectedDay || isUpdating}
+        className="w-full"
+      >
+        {isUpdating ? (
+          <>
+            <span className="animate-spin mr-2">⌛</span>
+            Updating...
+          </>
+        ) : (
+          'Update Availability'
+        )}
+      </Button>
+
+      <div className="mt-6">
+        <h3 className="text-lg font-semibold mb-4">Current Availability</h3>
         {isLoading ? (
-          <div className="py-4 text-center">
-            <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full mx-auto"></div>
-            <p className="text-xs text-muted-foreground mt-2">Loading schedule...</p>
-          </div>
+          <div className="text-center py-4">Loading schedule...</div>
         ) : availabilityData.length > 0 ? (
           <div className="space-y-2">
-            {availabilityData.map((item, index) => (
-              <div key={index} className="flex justify-between items-center py-2 border-b border-muted last:border-0">
-                <div>
-                  <p className="font-medium text-sm">{item.day_of_week}</p>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Clock size={12} />
-                    {item.start_time} - {item.end_time}
-                  </p>
+            {availabilityData.map((slot) => (
+              <div key={slot.day_of_week} className="flex justify-between items-center p-3 bg-secondary rounded-lg">
+                <div className="font-medium">{slot.day_of_week}</div>
+                <div className="text-muted-foreground">
+                  {slot.start_time} - {slot.end_time}
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-6 px-2"
-                  onClick={() => {
-                    setSelectedDay(item.day_of_week);
-                    const startIdx = TIME_OPTIONS.indexOf(item.start_time);
-                    onTimeChange('start', item.start_time);
-                    onTimeChange('end', item.end_time);
-                  }}
-                >
-                  Edit
-                </Button>
               </div>
             ))}
           </div>
         ) : (
-          <div className="py-4 text-center">
-            <p className="text-sm text-muted-foreground">No availability schedule found.</p>
-            <p className="text-xs text-muted-foreground mt-1">Add your first schedule above.</p>
+          <div className="text-center py-4 text-muted-foreground">
+            No availability schedule found. Add your first schedule above.
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 };
 
