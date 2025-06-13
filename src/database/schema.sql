@@ -34,6 +34,29 @@ CREATE TABLE `auth_tokens` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+
+-- Table structure for table `users`
+--
+
+DROP TABLE IF EXISTS `users`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `users` (
+  `id` varchar(36) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `email` varchar(100) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `role` varchar(20) NOT NULL,
+  `functionality` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `profile_completed` tinyint(1) DEFAULT '0',
+  `mobile_number` varchar(15) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+
 --
 -- Table structure for table `bookings`
 --
@@ -52,6 +75,7 @@ CREATE TABLE `bookings` (
   `status` enum('pending','confirmed','completed','cancelled','rejected','rescheduled') DEFAULT 'pending',
   `amount` decimal(10,2) DEFAULT '0.00',
   `notes` text,
+ 
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -62,6 +86,11 @@ CREATE TABLE `bookings` (
   CONSTRAINT `bookings_ibfk_2` FOREIGN KEY (`seeker_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+
+
+ALTER TABLE `bookings`
+ADD COLUMN `rejection_reason` TEXT AFTER `notes`;
 
 --
 -- Table structure for table `business_plans`
@@ -127,25 +156,7 @@ CREATE TABLE `expert_availability` (
 ) ENGINE=InnoDB AUTO_INCREMENT=29 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Stores expert availability schedules by day of week';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
---
--- Table structure for table `expert_functionality_mapping`
---
 
-DROP TABLE IF EXISTS `expert_functionality_mapping`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `expert_functionality_mapping` (
-  `id` varchar(36) NOT NULL DEFAULT (uuid()),
-  `expert_id` varchar(36) NOT NULL,
-  `functionality_id` int NOT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `unique_expert_functionality` (`expert_id`,`functionality_id`),
-  KEY `functionality_id` (`functionality_id`),
-  CONSTRAINT `expert_functionality_mapping_ibfk_1` FOREIGN KEY (`expert_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `expert_functionality_mapping_ibfk_2` FOREIGN KEY (`functionality_id`) REFERENCES `expert_functionality_options` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
 
 --
 -- Table structure for table `expert_functionality_options`
@@ -166,6 +177,27 @@ CREATE TABLE `expert_functionality_options` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+--
+-- Table structure for table `expert_functionality_mapping`
+--
+
+DROP TABLE IF EXISTS `expert_functionality_mapping`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `expert_functionality_mapping` (
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
+  `expert_id` varchar(36) NOT NULL,
+  `functionality_id` int NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_expert_functionality` (`expert_id`,`functionality_id`),
+  KEY `functionality_id` (`functionality_id`),
+  CONSTRAINT `expert_functionality_mapping_ibfk_1` FOREIGN KEY (`expert_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `expert_functionality_mapping_ibfk_2` FOREIGN KEY (`functionality_id`) REFERENCES `expert_functionality_options` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+
 -- Table structure for table `expert_profiles`
 --
 
@@ -262,26 +294,6 @@ CREATE TABLE `seeker_profiles` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `users`
---
-
-DROP TABLE IF EXISTS `users`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `users` (
-  `id` varchar(36) NOT NULL,
-  `name` varchar(100) NOT NULL,
-  `email` varchar(100) NOT NULL,
-  `password` varchar(255) NOT NULL,
-  `role` varchar(20) NOT NULL,
-  `functionality` varchar(100) DEFAULT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `profile_completed` tinyint(1) DEFAULT '0',
-  `mobile_number` varchar(15) NOT NULL DEFAULT '',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `email` (`email`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
 
 --
 -- Table structure for table `webinar_registrations`
@@ -317,3 +329,25 @@ CREATE TABLE `webinar_registrations` (
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
 -- Dump completed on 2025-06-10 15:15:05
+
+
+CREATE TABLE `session_feedback` (
+  `id` varchar(36) NOT NULL DEFAULT (uuid()),
+  `booking_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `user_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `user_role` enum('seeker','expert') NOT NULL,
+  `rating` int DEFAULT NULL,
+  `review` text DEFAULT NULL,
+  `message` text DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `booking_id` (`booking_id`),
+  KEY `user_id` (`user_id`),
+  CONSTRAINT `session_feedback_ibfk_1` FOREIGN KEY (`booking_id`) REFERENCES `bookings` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `session_feedback_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `session_feedback_chk_1` CHECK ((`rating` BETWEEN 1 AND 5) OR `rating` IS NULL)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+

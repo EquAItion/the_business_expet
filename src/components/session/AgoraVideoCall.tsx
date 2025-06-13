@@ -12,6 +12,7 @@ interface AgoraVideoCallProps {
   onEndCall: () => void;
   sessionStart: Date;
   sessionEnd: Date;
+  onParticipantsUpdate?: (count: number) => void;
 }
 
 const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
@@ -21,7 +22,8 @@ const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
   sessionType,
   onEndCall,
   sessionStart,
-  sessionEnd
+  sessionEnd,
+  onParticipantsUpdate
 }) => {
   const [localTracks, setLocalTracks] = useState<[IMicrophoneAudioTrack, ICameraVideoTrack] | null>(null);
   const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([]);
@@ -31,6 +33,8 @@ const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isMobile = useIsMobile();
+  const [timeRemaining, setTimeRemaining] = useState<string>('');
+  const [participantCount, setParticipantCount] = useState(1); // Start with 1 (self)
   
   const rtcClient = useRef<IAgoraRTCClient | null>(null);
   const localVideoRef = useRef<HTMLDivElement | null>(null);
@@ -198,6 +202,40 @@ const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
     onEndCall();
   };
   
+  // Add timer effect
+  useEffect(() => {
+    const updateTimer = () => {
+      const now = new Date();
+      const end = new Date(sessionEnd);
+      const diff = end.getTime() - now.getTime();
+      
+      if (diff <= 0) {
+        setTimeRemaining('Session ended');
+        leaveCall();
+        return;
+      }
+      
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      
+      setTimeRemaining(
+        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+      );
+    };
+
+    updateTimer();
+    const timer = setInterval(updateTimer, 1000);
+    return () => clearInterval(timer);
+  }, [sessionEnd]);
+
+  // Update participant count when users join/leave
+  useEffect(() => {
+    const count = remoteUsers.length + 1; // +1 for local user
+    setParticipantCount(count);
+    onParticipantsUpdate?.(count);
+  }, [remoteUsers, onParticipantsUpdate]);
+  
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -218,6 +256,11 @@ const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
   
   return (
     <div className="flex flex-col h-full">
+      {/* Session Timer */}
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-black/50 text-white px-4 py-2 rounded-full z-20">
+        <p className="text-sm font-medium">{timeRemaining}</p>
+      </div>
+
       <div className="flex-1 relative">
         {sessionType === 'video' ? (
           // Video session layout
@@ -257,9 +300,19 @@ const AgoraVideoCall: React.FC<AgoraVideoCallProps> = ({
                 <Mic className="w-16 h-16 text-primary" />
               </div>
               <p className="text-lg font-medium">Audio Session</p>
-              <p className="text-sm text-muted-foreground">
-                {remoteUsers.length > 0 ? 'Connected' : 'Waiting for others to join...'}
-              </p>
+              {/* <p className="text-sm text-muted-foreground">
+                {participantCount > 1 ? 'Connected' : 'Waiting for others to join...'}
+              </p> */}
+              <div className="flex items-center justify-center space-x-2">
+                {participantCount === 1 ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                    <p className="text-sm text-muted-foreground">Waiting for other participant...</p>
+                  </>
+                ) : (
+                  <p className="text-sm text-green-600 font-medium">Connected</p>
+                )}
+              </div>
             </div>
           </div>
         )}

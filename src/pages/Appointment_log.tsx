@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from "../components/layout/Navbar";
 import Footer from "../components/layout/Footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { cn } from "@/lib/utils";
 import { 
   Clock, 
   User, 
@@ -28,7 +29,9 @@ import { Label } from "../components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Calendar } from "../components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { format } from "date-fns";
+import { format, addDays, isAfter, isBefore, isSameDay, parseISO } from 'date-fns';
+import { Input } from "../components/ui/input";
+import { Textarea } from "../components/ui/textarea";
 
 interface Booking {
   id: string;
@@ -45,6 +48,8 @@ interface Booking {
   created_at: string;
   notes?: string;
   is_read?: boolean;
+  expert_response?: string;
+  rejection_reason?: string;
 }
 
 interface UserProfile {
@@ -64,7 +69,7 @@ interface UserProfile {
 type UserType = 'expert' | 'seeker';
 
 interface NotificationData {
-  type: 'booking_request' | 'booking_accepted' | 'booking_cancelled' | 'session_reminder' | 'session_completed' | 'session_rescheduled' | 'new_message';
+  type: 'booking_request' | 'booking_accepted' | 'booking_cancelled' | 'booking_rejected' | 'session_reminder' | 'session_completed' | 'session_rescheduled' | 'new_message';
   session_type: string;
   session_time?: string;
   date?: string;
@@ -80,6 +85,243 @@ const capitalizeFirstLetter = (str: string) => {
   return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
+const formatTimeRange = (startTime: string) => {
+  if (!startTime) return '';
+  const [hours, minutes] = startTime.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  const nextHour = ((hour + 1) % 24);
+  const nextHour12 = nextHour % 12 || 12;
+  const nextAmpm = nextHour >= 12 ? 'PM' : 'AM';
+  return `${hour12}:${minutes} ${ampm} - ${nextHour12}:${minutes} ${nextAmpm}`;
+};
+
+const dialogStyles = {
+  overlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 1000,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  content: {
+    position: 'relative',
+    width: '90%',
+    maxWidth: '500px',
+    backgroundColor: 'white',
+    borderRadius: '0.5rem',
+    padding: '1.5rem',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+    outline: 'none'
+  }
+};
+
+interface RescheduleDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  booking: Booking | null;
+  onReschedule: (bookingId: string, newDate: string, newStartTime: string, newEndTime: string) => Promise<void>;
+  checkBookingAvailability: (
+    expertId: string,
+    date: string,
+    startTime: string,
+    endTime: string,
+    excludeBookingId?: string
+  ) => Promise<boolean>;
+}
+
+const RescheduleDialog: React.FC<RescheduleDialogProps> = ({
+  isOpen,
+  onClose,
+  booking,
+  onReschedule,
+  checkBookingAvailability
+}): JSX.Element | null => {
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedStartTime, setSelectedStartTime] = useState<string>('');
+  const [selectedEndTime, setSelectedEndTime] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset state when dialog opens/closes or booking changes
+  useEffect(() => {
+    if (isOpen && booking) {
+      // Normalize time format to HH:mm for start and end time
+      const normalizeTime = (time: string) => {
+        if (!time) return '';
+        const parts = time.split(':');
+        if (parts.length < 2) return time;
+        const hours = parts[0].padStart(2, '0');
+        const minutes = parts[1].slice(0,2).padStart(2, '0');
+        return `${hours}:${minutes}`;
+      };
+
+      setSelectedDate(booking.date || '');
+      setSelectedStartTime(normalizeTime(booking.start_time) || '');
+      setSelectedEndTime(normalizeTime(booking.end_time) || '');
+      setError(null);
+    } else {
+      // Reset state when dialog closes or booking is null
+      setSelectedDate('');
+      setSelectedStartTime('');
+      setSelectedEndTime('');
+      setError(null);
+    }
+  }, [isOpen, booking]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Validate inputs
+      if (!selectedDate || !selectedStartTime || !selectedEndTime) {
+        throw new Error('Please fill in all fields');
+      }
+
+      // Check if the selected time slot is available
+      const isAvailable = await checkBookingAvailability(
+        booking.expert_id,
+        selectedDate,
+        selectedStartTime,
+        selectedEndTime,
+        booking.id // Exclude current booking from availability check
+      );
+
+      if (!isAvailable) {
+        throw new Error('This time slot is not available. Please choose another time.');
+      }
+
+      await onReschedule(
+        booking.id,
+        selectedDate,
+        selectedStartTime,
+        selectedEndTime
+      );
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reschedule booking');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Don't render if dialog is closed or no booking
+  if (!isOpen || !booking) {
+    return null;
+  }
+
+  // Generate time slots from 9 AM to 9 PM (21:00)
+  const timeSlots = Array.from({ length: 13 }, (_, i) => {
+    const hour = i + 9;
+    return `${hour.toString().padStart(2, '0')}:00`;
+  });
+
+  // Filter end time slots based on selected start time
+  const availableEndTimes = timeSlots.filter(time => {
+    if (!selectedStartTime) return true;
+    return time > selectedStartTime;
+  });
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Reschedule Booking</DialogTitle>
+          <DialogDescription>
+            Select a new date and time for your appointment.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="date">Date</Label>
+            <Input
+              id="date"
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              min={new Date().toISOString().split('T')[0]}
+              required
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="startTime">Start Time</Label>
+            <Select
+              value={selectedStartTime}
+              onValueChange={(value) => {
+                setSelectedStartTime(value);
+                // Set end time to 1 hour after start time
+                const startHour = parseInt(value.split(':')[0]);
+                const endHour = (startHour + 1).toString().padStart(2, '0');
+                setSelectedEndTime(`${endHour}:00`);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select start time" />
+              </SelectTrigger>
+              <SelectContent>
+                {timeSlots.map((time) => (
+                  <SelectItem key={time} value={time}>
+                    {time}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="endTime">End Time</Label>
+            <Select
+              value={selectedEndTime}
+              onValueChange={setSelectedEndTime}
+              disabled={!selectedStartTime}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select end time" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableEndTimes.map((time) => (
+                  <SelectItem key={time} value={time}>
+                    {time}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {error && (
+            <div className="text-sm text-red-500 mt-2">
+              {error}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? 'Rescheduling...' : 'Reschedule'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 const AppointmentLog = () => {
   const [seekerBookings, setSeekerBookings] = useState<Booking[]>([]);
   const [expertBookings, setExpertBookings] = useState<Booking[]>([]);
@@ -90,13 +332,33 @@ const AppointmentLog = () => {
   const [errorSeeker, setErrorSeeker] = useState<string | null>(null);
   const [errorExpert, setErrorExpert] = useState<string | null>(null);
   const [uniqueContacts, setUniqueContacts] = useState<UserProfile[]>([]);
+  const [expertAvailability, setExpertAvailability] = useState<any[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   // Reschedule dialog states
   const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
-  const [rescheduleBookingId, setRescheduleBookingId] = useState('');
-  const [rescheduleDate, setRescheduleDate] = useState<Date | undefined>(new Date());
-  const [rescheduleTime, setRescheduleTime] = useState('');
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+
+  // Add new state for query dialog
+  const [isQueryDialogOpen, setIsQueryDialogOpen] = useState(false);
+  const [selectedQuery, setSelectedQuery] = useState<string | null>(null);
+
+  // Add new state for available time slots
+  const [availableTimeSlots, setAvailableTimeSlots] = useState<{ [key: string]: string[] }>({});
+
+  // Add new state for reject dialog
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [selectedBookingForReject, setSelectedBookingForReject] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+
+  // Add new state for rejection reason dialog
+  const [isRejectionReasonDialogOpen, setIsRejectionReasonDialogOpen] = useState(false);
+  const [selectedRejectionReason, setSelectedRejectionReason] = useState<string | null>(null);
+
+  // Add this near the top of the component with other state variables
+  const [activeTab, setActiveTab] = useState('pending');
 
   // Get initials for avatar fallback
   const getInitials = (name: string) => {
@@ -182,6 +444,15 @@ const AppointmentLog = () => {
     return now >= sessionStart && now <= twentyMinutesAfter;
   };
 
+  // Add this function before getUpcomingCount
+  const isUpcomingBooking = (booking: Booking): boolean => {
+    const now = new Date();
+    const bookingDate = new Date(booking.date);
+    const [hours, minutes] = booking.start_time.split(':').map(Number);
+    bookingDate.setHours(hours, minutes, 0, 0);
+    return bookingDate > now && booking.status !== 'completed' && booking.status !== 'cancelled' && booking.status !== 'rejected';
+  };
+
   // Get upcoming count for badge
   const getUpcomingCount = () => {
     const bookings = userType === 'seeker' ? seekerBookings : expertBookings;
@@ -199,122 +470,125 @@ const AppointmentLog = () => {
     }).length;
   };
 
-  // Fetch bookings for seeker
-  const fetchSeekerBookings = async (id: string) => {
-    setLoadingSeeker(true);
-    setErrorSeeker(null);
-    
-    try {
-      const userData = localStorage.getItem('user');
-      console.log('User data from localStorage:', userData); // Debug log
+  // Loading and error state
+  const loading = loadingSeeker || loadingExpert;
+  const error = errorSeeker || errorExpert;
 
-      let token = '';
-      if (userData) {
-        const user = JSON.parse(userData);
-        token = user.token || user.accessToken || '';
-      }
+  // Bookings to display based on userType
+  const bookings = userType === 'seeker' ? seekerBookings : expertBookings;
+
+  // Add this useEffect for debugging after bookings declaration
+  useEffect(() => {
+    if (userId) {
+      console.log('Current user ID:', userId);
+      console.log('User type:', userType);
+      console.log('All bookings:', bookings);
+      console.log('Confirmed bookings:', bookings.filter(b => b.status === 'confirmed'));
+      console.log('Rejected bookings:', bookings.filter(b => b.status === 'rejected'));
+    }
+  }, [userId, userType, bookings]);
+
+  // Update the fetchSeekerBookings function
+  const fetchSeekerBookings = async (seekerId: string) => {
+    try {
+      console.log('Fetching seeker bookings for ID:', seekerId);
+      const token = localStorage.getItem('token');
       
-      console.log('Using token:', token ? 'Present' : 'Missing'); // Debug log
-      
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/seeker/${id}`, {
-        method: 'GET',
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/seeker/${seekerId}`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Authorization': `Bearer ${token}`
         }
       });
 
-      console.log('Response status:', response.status); // Debug log
-      
-      const data = await response.json();
-      console.log('Bookings data:', data); // Debug log
-
-      if (data && data.success && Array.isArray(data.data)) {
-        setSeekerBookings(data.data);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch seeker bookings: ${response.status}`);
       }
+
+      const responseData = await response.json();
+      console.log('Raw seeker bookings response:', responseData);
+      
+      // Process the bookings data
+      const bookingsData = Array.isArray(responseData) ? responseData : 
+                          (responseData.data && Array.isArray(responseData.data)) ? responseData.data : 
+                          [];
+      
+      // Ensure each booking has the required fields
+      const processedBookings = bookingsData.map((booking: any) => ({
+        id: booking.id || `temp-${Math.random()}`,
+        expert_id: booking.expert_id || '',
+        seeker_id: booking.seeker_id || seekerId,
+        expert_name: booking.expert_name || 'Unknown Expert',
+        seeker_name: booking.seeker_name || 'You',
+        date: booking.date || booking.appointment_date || '',
+        start_time: booking.start_time || '',
+        end_time: booking.end_time || '',
+        session_type: booking.session_type || 'video',
+        status: (booking.status || 'pending').toLowerCase(),
+        amount: booking.amount || 0,
+        created_at: booking.created_at || new Date().toISOString(),
+        notes: booking.notes || '',
+        rejection_reason: booking.rejection_reason || '',
+        is_read: booking.is_read || false
+      }));
+
+      console.log('Processed seeker bookings:', processedBookings);
+      setSeekerBookings(processedBookings);
     } catch (error) {
-      console.error('Error fetching bookings:', error);
-      setErrorSeeker('Failed to load bookings');
-    } finally {
-      setLoadingSeeker(false);
+      console.error('Error fetching seeker bookings:', error);
+      setErrorSeeker('Failed to fetch bookings. Please try again.');
+      setSeekerBookings([]);
     }
   };
 
-  // Fetch bookings for expert
-  const fetchExpertBookings = async (id: string) => {
-    setLoadingExpert(true);
-    setErrorExpert(null);
-    
+  // Update the fetchExpertBookings function similarly
+  const fetchExpertBookings = async (expertId: string) => {
     try {
-      const userData = localStorage.getItem('user');
-      let token = '';
+      console.log('Fetching expert bookings for ID:', expertId);
+      const token = localStorage.getItem('token');
       
-      if (userData) {
-        const user = JSON.parse(userData);
-        token = user.token || user.accessToken || '';
-      }
-      
-      if (!token) {
-        token = localStorage.getItem('token') || '';
-      }
-      
-      console.log('Fetching expert bookings for ID:', id);
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/expert/${id}`, {
-        method: 'GET',
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/expert/${expertId}`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Authorization': `Bearer ${token}`
         }
       });
-      
+
       if (!response.ok) {
-        console.error('Failed to fetch expert bookings:', response.statusText);
-        setExpertBookings([]);
-        setErrorExpert(`Failed to fetch expert bookings: ${response.statusText}`);
-        return;
+        throw new Error(`Failed to fetch expert bookings: ${response.status}`);
       }
+
+      const responseData = await response.json();
+      console.log('Raw expert bookings response:', responseData);
       
-      const data = await response.json();
-      console.log('Expert bookings response:', data);
+      // Process the bookings data
+      const bookingsData = Array.isArray(responseData) ? responseData : 
+                          (responseData.data && Array.isArray(responseData.data)) ? responseData.data : 
+                          [];
       
-      if (data && data.success && Array.isArray(data.data)) {
-        const processedBookings = data.data.map((booking: any) => {
-          const processed = {
-            id: booking.id || `temp-${Math.random()}`,
-            expert_id: booking.expert_id || id,
-            seeker_id: booking.seeker_id || '',
-            expert_name: booking.expert_name || 'You',
-            seeker_name: booking.seeker_name || 'Unknown Seeker',
-            date: booking.date || booking.appointment_date || '',
-            start_time: booking.start_time || '',
-            end_time: booking.end_time || '',
-            session_type: booking.session_type || 'video',
-            status: booking.status || 'pending',
-            amount: booking.amount || 0,
-            created_at: booking.created_at || new Date().toISOString(),
-            notes: booking.notes || '',
-            is_read: booking.is_read || false
-          };
-          console.log('Processed booking:', processed);
-          return processed;
-        });
-        
-        console.log('Setting expert bookings:', processedBookings);
-        setExpertBookings(processedBookings);
-        setErrorExpert(null);
-      } else {
-        console.error('Invalid expert bookings data:', data);
-        setExpertBookings([]);
-        if (data && !data.success) {
-          setErrorExpert(data.message || "Failed to load bookings");
-        }
-      }
+      // Ensure each booking has the required fields
+      const processedBookings = bookingsData.map((booking: any) => ({
+        id: booking.id || `temp-${Math.random()}`,
+        expert_id: booking.expert_id || expertId,
+        seeker_id: booking.seeker_id || '',
+        expert_name: booking.expert_name || 'You',
+        seeker_name: booking.seeker_name || 'Unknown Seeker',
+        date: booking.date || booking.appointment_date || '',
+        start_time: booking.start_time || '',
+        end_time: booking.end_time || '',
+        session_type: booking.session_type || 'video',
+        status: (booking.status || 'pending').toLowerCase(),
+        amount: booking.amount || 0,
+        created_at: booking.created_at || new Date().toISOString(),
+        notes: booking.notes || '',
+        rejection_reason: booking.rejection_reason || '',
+        is_read: booking.is_read || false
+      }));
+
+      console.log('Processed expert bookings:', processedBookings);
+      setExpertBookings(processedBookings);
     } catch (error) {
       console.error('Error fetching expert bookings:', error);
-      setErrorExpert("Failed to load your bookings. Please try again.");
+      setErrorExpert('Failed to fetch bookings. Please try again.');
       setExpertBookings([]);
-    } finally {
-      setLoadingExpert(false);
     }
   };
 
@@ -422,13 +696,6 @@ const AppointmentLog = () => {
     setUniqueContacts(Array.from(contactsMap.values()));
   }, [seekerBookings, expertBookings]);
 
-  // Loading and error state
-  const loading = loadingSeeker || loadingExpert;
-  const error = errorSeeker || errorExpert;
-
-  // Bookings to display based on userType
-  const bookings = userType === 'seeker' ? seekerBookings : expertBookings;
-
   // Handle accepting a booking (experts only)
   const handleAcceptBooking = async (bookingId: string) => {
     try {
@@ -465,164 +732,281 @@ const AppointmentLog = () => {
     }
   };
 
-  // Handle rejecting a booking (experts only)
-  const handleRejectBooking = async (bookingId: string) => {
+  // Add a simple RejectionBox component
+  const RejectionBox = ({ reason }: { reason: string | null }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    if (!reason) return null;
+
+    return (
+      <>
+        <div 
+          className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+          onClick={() => setIsOpen(true)}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">View Response</span>
+            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+          <p className="mt-1 text-sm text-gray-600 line-clamp-2">
+            {reason}
+          </p>
+        </div>
+
+        {isOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Response Details</h3>
+                <button 
+                  onClick={() => setIsOpen(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-gray-700 whitespace-pre-wrap">
+                  {reason}
+                </p>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  // Update the handleReject function to ensure rejection reason is sent
+  const handleReject = async () => {
+    if (!selectedBookingForReject || !rejectionReason.trim()) {
+      toast({
+        title: "Error",
+        description: "Please provide a reason for rejection",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
-      const userData = localStorage.getItem('user');
-      let token = '';
-      if (userData) {
-        const user = JSON.parse(userData);
-        token = user.token || user.accessToken || '';
-      }
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/${bookingId}/status`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/${selectedBookingForReject}/status`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ status: 'rejected' })
+        body: JSON.stringify({
+          status: 'rejected',
+          rejection_reason: rejectionReason.trim()
+        })
       });
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to reject booking');
       }
-      setExpertBookings(prev => prev.map(booking => booking.id === bookingId ? {...booking, status: 'rejected'} : booking));
-      setSeekerBookings(prev => prev.map(booking => booking.id === bookingId ? {...booking, status: 'rejected'} : booking));
-      toast({
-        title: "Booking rejected",
-        description: "The client has been notified",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to reject booking",
-        variant: "destructive",
-      });
-    }
-  };
 
-  // Open reschedule dialog
-  const openRescheduleDialog = (bookingId: string, currentDate: string) => {
-    setRescheduleBookingId(bookingId);
-    setRescheduleDate(new Date(currentDate));
-    setRescheduleTime('');
-    setIsRescheduleOpen(true);
-  };
-
-  // Handle reschedule submission
-  const handleRescheduleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!rescheduleDate || !rescheduleTime) {
       toast({
-        title: "Error",
-        description: "Please select a date and time",
-        variant: "destructive",
+        title: "Success",
+        description: "Booking rejected successfully",
       });
-      return;
-    }
-    try {
-      const formattedDate = rescheduleDate.toISOString().split('T')[0];
-      const userData = localStorage.getItem('user');
-      let token = '';
-      if (userData) {
-        const user = JSON.parse(userData);
-        token = user.token || user.accessToken || '';
+
+      setIsRejectDialogOpen(false);
+      setRejectionReason('');
+      setSelectedBookingForReject(null);
+      
+      // Refresh bookings based on user type
+      if (userType === 'seeker') {
+        await fetchSeekerBookings(userId);
+      } else {
+        await fetchExpertBookings(userId);
       }
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/${rescheduleBookingId}/reschedule`, {
+    } catch (error) {
+      console.error('Rejection error:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to reject booking",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Update the handleReschedule function to match the RescheduleDialog props type
+  const handleReschedule = async (
+    bookingId: string,
+    newDate: string,
+    newStartTime: string,
+    newEndTime: string
+  ): Promise<void> => {
+    try {
+      const userData = localStorage.getItem('user');
+      if (!userData) throw new Error('User data not found');
+      
+      const user = JSON.parse(userData);
+      const token = user.token || user.accessToken;
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/${bookingId}/reschedule`, {
         method: 'PUT',
-        headers: { 
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          date: newDate,
+          start_time: newStartTime,
+          end_time: newEndTime
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to reschedule booking');
+      }
+
+      // Refresh bookings
+      if (userId) {
+        if (userType === 'seeker') {
+          await fetchSeekerBookings(userId);
+        } else {
+          await fetchExpertBookings(userId);
+        }
+      }
+
+      toast({
+        title: "Success",
+        description: "Booking rescheduled successfully"
+      });
+    } catch (error) {
+      console.error('Reschedule error:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to reschedule booking",
+        variant: "destructive"
+      });
+      throw error; // Re-throw to let the dialog handle the error
+    }
+  };
+
+  // Add function to fetch expert availability
+  const fetchExpertAvailability = async (expertId: string) => {
+    setAvailabilityLoading(true);
+    setAvailabilityError(null);
+    
+    try {
+      const userData = localStorage.getItem('user');
+      if (!userData) throw new Error('User data not found');
+      
+      const user = JSON.parse(userData);
+      const token = user.token || user.accessToken;
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/experts/availability/${expertId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch availability');
+
+      const result = await response.json();
+      setExpertAvailability(result.data);
+    } catch (error) {
+      setAvailabilityError('Failed to load expert availability');
+      console.error('Error fetching availability:', error);
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  };
+
+  // Add function to generate time slots
+  const generateTimeSlots = (start: string, end: string): string[] => {
+    const slots: string[] = [];
+    const [startHour] = start.split(':').map(Number);
+    const [endHour] = end.split(':').map(Number);
+    
+    for (let hour = startHour; hour < endHour; hour++) {
+      slots.push(`${hour.toString().padStart(2, '0')}:00`);
+    }
+    
+    return slots;
+  };
+
+  // Add the checkBookingAvailability function
+  const checkBookingAvailability = async (
+    expertId: string,
+    date: string,
+    startTime: string,
+    endTime: string,
+    excludeBookingId?: string
+  ): Promise<boolean> => {
+    try {
+      const userData = localStorage.getItem('user');
+      if (!userData) throw new Error('User data not found');
+      
+      const user = JSON.parse(userData);
+      const token = user.token || user.accessToken;
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/check-availability`, {
+        method: 'POST',
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ 
-          date: formattedDate,
-          start_time: rescheduleTime 
+        body: JSON.stringify({
+          expert_id: expertId,
+          date,
+          start_time: startTime,
+          end_time: endTime,
+          exclude_booking_id: excludeBookingId
         })
       });
-      const responseData = await response.json();
+
       if (!response.ok) {
-        throw new Error(responseData.message || 'Failed to reschedule booking');
+        throw new Error('Failed to check availability');
       }
-      const updateBooking = (booking: Booking): Booking => 
-        booking.id === rescheduleBookingId 
-          ? {...booking, date: formattedDate, start_time: rescheduleTime, status: 'confirmed'} 
-          : booking;
-      setExpertBookings(prev => prev.map(updateBooking));
-      setSeekerBookings(prev => prev.map(updateBooking));
-      setIsRescheduleOpen(false);
-      toast({
-        title: "Booking rescheduled",
-        description: "The appointment has been rescheduled successfully",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to reschedule booking",
-        variant: "destructive",
-      });
+
+      const data = await response.json();
+      return data.available;
+    } catch (error) {
+      console.error('Error checking availability:', error);
+      return false;
     }
   };
 
-  // Format amount helper
-  const formatAmount = (amount: number | string): string => {
-    if (typeof amount === 'string') {
-      return parseFloat(amount).toFixed(2);
+  // Add function to check if a session is in the past
+  const isSessionInPast = (dateStr: string, endTimeStr: string): boolean => {
+    try {
+      const now = new Date();
+      const bookingDate = new Date(dateStr);
+      const [hours, minutes] = endTimeStr.split(':').map(Number);
+      bookingDate.setHours(hours, minutes, 0, 0);
+      return bookingDate < now;
+    } catch (error) {
+      console.error('Error in isSessionInPast:', error);
+      return false;
     }
-    return amount.toFixed(2);
   };
 
-  // Check if amount is positive
-  const isAmountPositive = (amount: number | string): boolean => {
-    if (typeof amount === 'string') {
-      return parseFloat(amount) > 0;
-    }
-    return amount > 0;
-  };
-
-  // Helper to check if current time is within 5 minutes before session start
-  const isWithinFiveMinutesBeforeStart = (dateStr: string, startTimeStr: string): boolean => {
-    const now = new Date();
-    const sessionStart = new Date(`${dateStr}T${startTimeStr}`);
-    const fiveMinutesBefore = new Date(sessionStart.getTime() - 5 * 60 * 1000);
-    return now >= fiveMinutesBefore && now <= sessionStart;
-  };
-
-  // Helper to check if session is completed (current time after session end)
-  const isSessionCompleted = (dateStr: string, endTimeStr: string): boolean => {
-    const now = new Date();
-    const sessionEnd = new Date(`${dateStr}T${endTimeStr}`);
-    return now > sessionEnd;
-  };
-
-  // Add function to check if session is in past
-  const isSessionInPast = (date: string, endTime: string): boolean => {
-    const now = new Date();
-    const bookingDate = new Date(date);
-    const [hours, minutes] = endTime.split(':').map(Number);
-    const bookingEnd = new Date(bookingDate);
-    bookingEnd.setHours(hours, minutes, 0, 0);
-    return bookingEnd < now;
-  };
-
-  // Update the renderBookingCard function
+  // Update the booking card to fix the See Response click handling
   const renderBookingCard = (booking: Booking) => {
     const isPast = isSessionInPast(booking.date, booking.end_time);
     const displayStatus = isPast ? 'completed' : booking.status;
-
-    // Determine if the user is viewing as a seeker or expert
     const isViewingAsSeeker = userType === 'seeker';
-
-    // Get the other user's name based on the user type
     const otherUserName = isViewingAsSeeker ? booking.expert_name : booking.seeker_name;
-
-    // Find the other user's profile from uniqueContacts
-    const otherUser = uniqueContacts.find(contact =>
-      isViewingAsSeeker ? contact.id === booking.expert_id : contact.id === booking.seeker_id
-    );
-
     const sessionCompleted = isSessionCompleted(booking.date, booking.end_time);
     const canJoinSession = !sessionCompleted && (isWithinFiveMinutesBeforeStart(booking.date, booking.start_time) || new Date() >= new Date(`${booking.date}T${booking.start_time}`));
 
+    // Add handleJoinSession function inside renderBookingCard
     const handleJoinSession = async () => {
       try {
         // For video and audio sessions, request media permissions
@@ -662,146 +1046,240 @@ const AppointmentLog = () => {
       }
     };
 
+    const getTimeDisplay = (time: string) => {
+      if (!time) return '';
+      const [hours, minutes] = time.split(':');
+      const hour = parseInt(hours);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const hour12 = hour % 12 || 12;
+      const nextHour = ((hour + 1) % 24);
+      const nextHour12 = nextHour % 12 || 12;
+      const nextAmpm = nextHour >= 12 ? 'PM' : 'AM';
+      return `${hour12}:${minutes} ${ampm} - ${nextHour12}:${minutes} ${nextAmpm}`;
+    };
+
     return (
-      <Card key={booking.id} className="overflow-hidden">
+      <Card key={booking.id} id={`booking-${booking.id}`} className="mb-4">
+        {/* Header Section */}
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Avatar>
-                <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${otherUserName}`} />
-                <AvatarFallback>{getInitials(otherUserName)}</AvatarFallback>
-              </Avatar>
-              <div>
+          <div className="space-y-2">
+            {/* Name and Status */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Avatar>
+                  <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${otherUserName}`} />
+                  <AvatarFallback>{getInitials(otherUserName)}</AvatarFallback>
+                </Avatar>
                 <CardTitle className="text-base">{otherUserName}</CardTitle>
-                <CardDescription>
-                  {formatDate(booking.date)} at {booking.start_time}
-                </CardDescription>
+              </div>
+              <Badge className={getStatusBadge(displayStatus)}>
+                {displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1)}
+              </Badge>
+            </div>
+
+            {/* Date, Time and Session Type */}
+            <div className="flex flex-col space-y-1">
+              <div className="flex items-center text-sm text-muted-foreground">
+                <CalendarIcon className="h-4 w-4 mr-2" />
+                {formatDate(booking.date)}
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <Clock className="h-4 w-4 mr-2" />
+                {formatTimeRange(booking.start_time)}
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                {booking.session_type === 'video' && <Video className="h-4 w-4 mr-2" />}
+                {booking.session_type === 'audio' && <Mic className="h-4 w-4 mr-2" />}
+                {booking.session_type === 'chat' && <MessageSquare className="h-4 w-4 mr-2" />}
+                {booking.session_type.charAt(0).toUpperCase() + booking.session_type.slice(1)} Session
               </div>
             </div>
-            <Badge className={getStatusBadge(displayStatus)}>
-              {displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1)}
-            </Badge>
+
+            {/* Expert's Response for Seeker */}
+            {isViewingAsSeeker && booking.expert_response && (
+              <div className="mt-2 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium text-sm">Expert's Response</h4>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setSelectedQuery(booking.expert_response);
+                      setIsQueryDialogOpen(true);
+                    }}
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    See Response
+                  </Button>
+                </div>
+                <p className="text-sm text-gray-600 line-clamp-2">
+                  {booking.expert_response}
+                </p>
+              </div>
+            )}
           </div>
         </CardHeader>
 
-        <CardContent className="pb-2">
-          <div className="space-y-2">
-            <div className="flex items-center text-sm text-muted-foreground">
-              {booking.session_type === 'video' && <Video className="h-4 w-4 mr-2" />}
-              {booking.session_type === 'audio' && <Mic className="h-4 w-4 mr-2" />}
-              {booking.session_type === 'chat' && <MessageSquare className="h-4 w-4 mr-2" />}
-              {booking.session_type.charAt(0).toUpperCase() + booking.session_type.slice(1)} Session
-            </div>
-            <div className="flex items-center text-sm text-muted-foreground">
-              <Clock className="h-4 w-4 mr-2" />
-              {booking.start_time} - {booking.end_time}
-            </div>
-            <div className="flex items-center text-sm text-muted-foreground">
-              <MapPin className="h-4 w-4 mr-2" />
-              {booking.session_type === 'video' ? 'Video Call' : 
-               booking.session_type === 'audio' ? 'Audio Call' : 
-               'Chat Session'}
-            </div>
-          </div>
-        </CardContent>
-
-        <CardFooter className="pt-2 border-t bg-gray-50/50">
-          {userType === 'seeker' ? (
-            <div className="w-full space-y-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full"
-                onClick={() => navigate(`/experts/${booking.expert_id}`)}
-              >
-                <User className="h-4 w-4 mr-2" />
-                View Expert Profile
-              </Button>
-              {displayStatus === 'confirmed' && !isPast && (
-                <Button
-                  size="sm"
-                  className="w-full"
-                  onClick={handleJoinSession}
-                >
-                  {booking.session_type === 'video' && <Video className="h-4 w-4 mr-2" />}
-                  {booking.session_type === 'audio' && <Mic className="h-4 w-4 mr-2" />}
-                  {booking.session_type === 'chat' && <MessageSquare className="h-4 w-4 mr-2" />}
-                  Join {booking.session_type.charAt(0).toUpperCase() + booking.session_type.slice(1)} Session
-                </Button>
-              )}
-              {booking.status === 'cancelled' && !booking.is_read && booking.session_type === 'chat' && (
+        {/* Two Boxes Section */}
+        {!isViewingAsSeeker && booking.status !== 'rejected' && (
+          <CardContent className="pb-2">
+            <div className="grid grid-cols-2 gap-3">
+              {/* Left Box - Reschedule */}
+              <div className="bg-gray-50 p-3 rounded-lg">
                 <Button
                   size="sm"
                   variant="outline"
-                  className="w-full"
-                  onClick={() => markBookingAsRead(booking.id)}
+                  className="w-full h-[80px] flex flex-col items-center justify-center gap-2"
+                  onClick={() => {
+                    setSelectedBooking(booking);
+                    setIsRescheduleOpen(true);
+                  }}
                 >
-                  Mark as Read
+                  <CalendarClock className="h-5 w-5" />
+                  <span className="text-sm">Reschedule Session</span>
                 </Button>
-              )}
-            </div>
-          ) : (
-            <div className="w-full space-y-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full"
-                onClick={() => navigate(`/seekers/${booking.seeker_id}`)}
-              >
-                <User className="h-4 w-4 mr-2" />
-                View Seeker Profile
-              </Button>
-              {booking.status === 'pending' && (
-                <div className="grid grid-cols-3 gap-2">
+              </div>
+
+              {/* Right Box - Seeker's Query */}
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <div className="flex flex-col h-[80px]">
+                  <h4 className="font-medium text-sm mb-1">Seeker's Query</h4>
+                  <div className="flex-grow">
+                    <p className="text-sm text-gray-600 line-clamp-2 mb-2">
+                      {booking.notes || 'No query available'}
+                    </p>
+                  </div>
                   <Button
                     size="sm"
                     variant="outline"
-                    className="w-full"
-                    onClick={() => openRescheduleDialog(booking.id, booking.date)}
+                    className="w-full text-xs"
+                    onClick={() => {
+                      setSelectedQuery(booking.notes || null);
+                      setIsQueryDialogOpen(true);
+                    }}
                   >
-                    <CalendarClock className="h-4 w-4 mr-2" />
-                    Reschedule
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="w-full"
-                    onClick={() => handleRejectBooking(booking.id)}
-                  >
-                    <X className="h-4 w-4 mr-2" />
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="w-full"
-                    onClick={() => handleAcceptBooking(booking.id)}
-                  >
-                    <Check className="h-4 w-4 mr-2" />
-                    Accept
+                    <MessageSquare className="h-3 w-3 mr-1" />
+                    View Details
                   </Button>
                 </div>
-              )}
-              {booking.status === 'confirmed' && (
-                <Button
-                  size="sm"
-                  className="w-full"
-                  onClick={handleJoinSession}
-                >
-                  {booking.session_type === 'video' && <Video className="h-4 w-4 mr-2" />}
-                  {booking.session_type === 'audio' && <Mic className="h-4 w-4 mr-2" />}
-                  {booking.session_type === 'chat' && <MessageSquare className="h-4 w-4 mr-2" />}
-                  Start {booking.session_type.charAt(0).toUpperCase() + booking.session_type.slice(1)} Session
-                </Button>
-              )}
-              {booking.status === 'cancelled' && !booking.is_read && booking.session_type === 'chat' && (
+              </div>
+            </div>
+          </CardContent>
+        )}
+
+        {/* For rejected bookings - Only show Seeker's Query */}
+        {!isViewingAsSeeker && booking.status === 'rejected' && (
+          <CardContent className="pb-2">
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <div className="flex flex-col">
+                <h4 className="font-medium text-sm mb-2">Seeker's Query</h4>
+                <div className="flex-grow">
+                  <p className="text-sm text-gray-600 line-clamp-2 mb-2">
+                    {booking.notes || 'No query available'}
+                  </p>
+                </div>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="w-full"
-                  onClick={() => markBookingAsRead(booking.id)}
+                  className="w-full text-xs"
+                  onClick={() => {
+                    setSelectedQuery(booking.notes || null);
+                    setIsQueryDialogOpen(true);
+                  }}
                 >
-                  Mark as Read
+                  <MessageSquare className="h-3 w-3 mr-1" />
+                  View Details
                 </Button>
+              </div>
+            </div>
+          </CardContent>
+        )}
+
+        {/* Footer Section */}
+        <CardFooter className="pt-2">
+          {!isViewingAsSeeker && booking.status === 'pending' && (
+            <div className="flex gap-2 w-full">
+              <Button
+                size="sm"
+                className="flex-1 bg-green-600 hover:bg-green-700"
+                onClick={() => handleAcceptBooking(booking.id)}
+              >
+                Accept
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="flex-1"
+                onClick={() => {
+                  setSelectedBookingForReject(booking.id);
+                  setIsRejectDialogOpen(true);
+                }}
+              >
+                Reject
+              </Button>
+            </div>
+          )}
+          {booking.status === 'confirmed' && (
+            <Button
+              size="sm"
+              className="w-full bg-green-600 hover:bg-green-700"
+              onClick={() => handleJoinSession()}
+            >
+              Join Session
+            </Button>
+          )}
+          {booking.status === 'rejected' && (
+            <div className="w-full space-y-3">
+              {userType === 'seeker' ? (
+                <button
+                  onClick={() => {
+                    console.log('Opening rejection reason:', booking.rejection_reason); // Debug log
+                    if (booking.rejection_reason) {
+                      setSelectedRejectionReason(booking.rejection_reason);
+                      setIsRejectionReasonDialogOpen(true);
+                    }
+                  }}
+                  className="w-full bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 text-left"
+                >
+                  <div className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="p-2 bg-red-50 rounded-full">
+                          <svg
+                            className="w-5 h-5 text-red-500"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                            />
+                          </svg>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-gray-900">Booking Rejected</h4>
+                          <p className="text-sm text-gray-500">Click to view expert's response</p>
+                        </div>
+                      </div>
+                      <div className="px-4 py-2 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors flex items-center space-x-2">
+                        <span>See Response</span>
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ) : (
+                <div className="text-sm text-red-500 font-medium">This booking has been rejected</div>
               )}
             </div>
           )}
@@ -912,14 +1390,16 @@ const socket = new WebSocket(wsUrl);
           }
         };        ws.onmessage = (event) => {
           try {
-            const data: NotificationData = JSON.parse(event.data);
+            const data = JSON.parse(event.data) as NotificationData;
             console.log('Received notification:', data);
             
             // Only refresh bookings for booking-related notifications
             if (userId && data.type && (
-              data.type.startsWith('booking_') || 
-              data.type === 'session_reminder' || 
-              data.type === 'session_completed' || 
+              data.type === 'booking_request' ||
+              data.type === 'booking_accepted' ||
+              data.type === 'booking_cancelled' ||
+              data.type === 'session_reminder' ||
+              data.type === 'session_completed' ||
               data.type === 'session_rescheduled'
             )) {
               // Fetch only the relevant booking type based on user type
@@ -928,6 +1408,9 @@ const socket = new WebSocket(wsUrl);
               } else if (userType === 'expert') {
                 fetchExpertBookings(userId);
               }
+
+              // Handle the notification click
+              handleNotificationClick(data);
             }
 
             // Show notification if service worker is available
@@ -1027,62 +1510,21 @@ const socket = new WebSocket(wsUrl);
   }, [userId, userType, fetchSeekerBookings, fetchExpertBookings]);
 
   // Update the booking filters
-  const isUpcomingBooking = (booking: Booking): boolean => {
-    try {
-      const now = new Date();
-      const bookingDate = new Date(booking.date);
-      const [hours, minutes] = booking.end_time.split(':').map(Number);
-      const bookingEnd = new Date(bookingDate);
-      bookingEnd.setHours(hours, minutes, 0, 0);
-
-      // Show pending bookings regardless of time
-      return booking.status === 'pending';
-    } catch (error) {
-      console.error('Error in isUpcomingBooking:', error, booking);
-      return false;
-    }
+  const isPendingBooking = (booking: Booking): boolean => {
+    return booking.status === 'pending';
   };
 
-  // Update the isConfirmedBooking function
   const isConfirmedBooking = (booking: Booking): boolean => {
-    try {
-        const now = new Date();
-        const bookingDate = new Date(booking.date);
-        const [endHours, endMinutes] = booking.end_time.split(':').map(Number);
-        const bookingEnd = new Date(bookingDate);
-        bookingEnd.setHours(endHours, endMinutes, 0, 0);
-
-        // Show confirmed bookings that:
-        // 1. Have status 'confirmed'
-        // 2. Haven't ended yet
-        // 3. For both experts and seekers
-        return (
-            booking.status === 'confirmed' && 
-            bookingEnd > now
-        );
-    } catch (error) {
-        console.error('Error in isConfirmedBooking:', error, booking);
-        return false;
-    }
+    return booking.status === 'confirmed';
   };
 
-  // Update the isPastBooking filter:
-  const isPastBooking = (booking: Booking): boolean => {
-    try {
-      const now = new Date();
-      const bookingDate = new Date(booking.date);
-      const [hours, minutes] = booking.end_time.split(':').map(Number);
-      const bookingEnd = new Date(bookingDate);
-      bookingEnd.setHours(hours, minutes, 0, 0);
-
-      // Only show completed and cancelled bookings in past tab
-      return (booking.status === 'completed' || booking.status === 'cancelled') && bookingEnd < now;
-    } catch (error) {
-      console.error('Error in isPastBooking:', error, booking);
-      return false;
-    }
+  const isRejectedBooking = (booking: Booking): boolean => {
+    return booking.status === 'rejected';
   };
-  // No need for periodic refresh since we update via WebSocket notifications
+
+  const isCompletedBooking = (booking: Booking): boolean => {
+    return booking.status === 'completed' || booking.status === 'cancelled';
+  };
 
   // Add a function to mark booking as read
   const markBookingAsRead = async (bookingId: string) => {
@@ -1119,6 +1561,298 @@ const socket = new WebSocket(wsUrl);
     }
   };
 
+  // Add QueryDialog component
+  const QueryDialog = () => (
+    <Dialog open={isQueryDialogOpen} onOpenChange={setIsQueryDialogOpen}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Seeker's Query</DialogTitle>
+          <DialogDescription>
+            The question or topic the seeker wants to discuss
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4">
+          <p className="text-sm text-gray-600 whitespace-pre-wrap">
+            {selectedQuery || 'No query available'}
+          </p>
+        </div>
+        <DialogFooter>
+          <Button onClick={() => setIsQueryDialogOpen(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  // Add function to fetch expert's bookings for a specific date
+  const fetchExpertBookingsForDate = async (expertId: string, date: string) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/expert/${expertId}/date/${date}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (!response.ok) throw new Error('Failed to fetch bookings');
+      const data = await response.json();
+      return data.bookings || [];
+    } catch (error) {
+      console.error('Error fetching expert bookings:', error);
+      return [];
+    }
+  };
+
+  // Add function to check if a time slot is available
+  const isTimeSlotAvailable = (bookings: any[], date: string, time: string) => {
+    return !bookings.some(booking => 
+      booking.date === date && 
+      booking.start_time === time && 
+      booking.status !== 'cancelled'
+    );
+  };
+
+  // Modify getAvailableTimeSlots to return proper time format
+  const getAvailableTimeSlots = async (expertId: string, date: string) => {
+    const bookings = await fetchExpertBookingsForDate(expertId, date);
+    const allTimeSlots = [
+      '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'
+    ];
+    
+    const availableSlots = allTimeSlots.filter(time => isTimeSlotAvailable(bookings, date, time));
+    return availableSlots;
+  };
+
+  // Add the RejectDialog component
+  const RejectDialog = () => {
+    const [localReason, setLocalReason] = useState('');
+
+    const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (localReason.trim()) {
+        setRejectionReason(localReason);
+        handleReject();
+      }
+    };
+
+    if (!isRejectDialogOpen) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Reject Booking</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Please provide a reason for rejecting this booking (maximum 500 words).
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label 
+                htmlFor="rejection-reason" 
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Rejection Reason
+              </label>
+              <div className="relative">
+                <textarea
+                  id="rejection-reason"
+                  value={localReason}
+                  onChange={(e) => setLocalReason(e.target.value)}
+                  placeholder="Enter reason for rejection..."
+                  className="w-full min-h-[150px] p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  style={{
+                    direction: 'ltr',
+                    textAlign: 'left',
+                    writingMode: 'horizontal-tb',
+                    unicodeBidi: 'plaintext'
+                  }}
+                />
+                <div className="absolute bottom-2 right-2 text-xs text-gray-500 bg-white px-1">
+                  {localReason.trim().split(/\s+/).length} / 500 words
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRejectDialogOpen(false);
+                  setLocalReason('');
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!localReason.trim()}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50"
+              >
+                Reject Booking
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  // Add the RejectionReasonDialog component
+  const RejectionReasonDialog = () => {
+    const [isVisible, setIsVisible] = useState(false);
+
+    useEffect(() => {
+      if (isRejectionReasonDialogOpen && selectedRejectionReason) {
+        setIsVisible(true);
+      } else {
+        setIsVisible(false);
+      }
+    }, [isRejectionReasonDialogOpen, selectedRejectionReason]);
+
+    if (!isVisible || !selectedRejectionReason) return null;
+
+    return (
+      <div 
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setIsRejectionReasonDialogOpen(false);
+          }
+        }}
+      >
+        <div 
+          className="bg-white rounded-lg p-6 max-w-lg w-full mx-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Expert's Response</h3>
+              <p className="text-sm text-gray-500 mt-1">Reason for rejecting the booking</p>
+            </div>
+            <button 
+              onClick={() => setIsRejectionReasonDialogOpen(false)}
+              className="text-gray-500 hover:text-gray-700 p-1"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <p 
+              className="text-gray-700 whitespace-pre-wrap"
+              style={{
+                direction: 'ltr',
+                textAlign: 'left',
+                unicodeBidi: 'plaintext'
+              }}
+            >
+              {selectedRejectionReason}
+            </p>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={() => setIsRejectionReasonDialogOpen(false)}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Add function to check if a session is completed
+  const isSessionCompleted = (dateStr: string, endTimeStr: string): boolean => {
+    try {
+      const now = new Date();
+      const [hours, minutes] = endTimeStr.split(':').map(Number);
+      const sessionEnd = new Date(dateStr);
+      sessionEnd.setHours(hours, minutes, 0, 0);
+      return sessionEnd < now;
+    } catch (error) {
+      console.error('Error in isSessionCompleted:', error);
+      return false;
+    }
+  };
+
+  // Add function to check if current time is within 5 minutes before session start
+  const isWithinFiveMinutesBeforeStart = (dateStr: string, startTimeStr: string): boolean => {
+    try {
+      const now = new Date();
+      const [hours, minutes] = startTimeStr.split(':').map(Number);
+      const sessionStart = new Date(dateStr);
+      sessionStart.setHours(hours, minutes, 0, 0);
+      const fiveMinutesBefore = new Date(sessionStart.getTime() - 5 * 60 * 1000);
+      return now >= fiveMinutesBefore && now <= sessionStart;
+    } catch (error) {
+      console.error('Error in isWithinFiveMinutesBeforeStart:', error);
+      return false;
+    }
+  };
+
+  // Add this function after the markBookingAsRead function
+  const handleNotificationClick = async (notification: NotificationData) => {
+    try {
+      // Mark the notification as read
+      if (notification.booking_id) {
+        await markBookingAsRead(notification.booking_id);
+      }
+
+      // Navigate to the appropriate tab based on notification type
+      let targetTab = 'pending';
+      if (notification.type === 'booking_accepted') {
+        targetTab = 'confirmed';
+      } else if (notification.type === 'booking_cancelled' || notification.type === 'session_completed') {
+        targetTab = 'completed';
+      } else if (notification.type === 'booking_request') {
+        targetTab = 'pending';
+      }
+
+      // Set the active tab
+      setActiveTab(targetTab);
+
+      // If there's a specific booking ID, scroll to it
+      if (notification.booking_id) {
+        const bookingElement = document.getElementById(`booking-${notification.booking_id}`);
+        if (bookingElement) {
+          bookingElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Add a highlight effect
+          bookingElement.classList.add('highlight-booking');
+          setTimeout(() => {
+            bookingElement.classList.remove('highlight-booking');
+          }, 2000);
+        }
+      }
+    } catch (error) {
+      console.error('Error handling notification click:', error);
+      toast({
+        title: "Error",
+        description: "Failed to process notification",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Add this CSS class to your styles
+  const styles = `
+    @keyframes highlight-booking {
+      0% { background-color: rgba(var(--primary-rgb), 0.1); }
+      50% { background-color: rgba(var(--primary-rgb), 0.2); }
+      100% { background-color: transparent; }
+    }
+
+    .highlight-booking {
+      animation: highlight-booking 2s ease-in-out;
+    }
+  `;
+
+  // Add the styles to the document
+  const styleSheet = document.createElement("style");
+  styleSheet.innerText = styles;
+  document.head.appendChild(styleSheet);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -1150,12 +1884,12 @@ const socket = new WebSocket(wsUrl);
               </div>
             </CardContent>
           </Card>
-        ) : loadingSeeker || loadingExpert ? (
+        ) : loading ? (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
             <p className="text-muted-foreground">Loading appointments...</p>
           </div>
-        ) : errorSeeker || errorExpert ? (
+        ) : error ? (
           <Card className="text-center py-12">
             <CardContent>
               <div className="space-y-4">
@@ -1176,33 +1910,33 @@ const socket = new WebSocket(wsUrl);
             <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-4">
               <TabsTrigger value="pending" className="flex items-center gap-2">
                 Pending
-                {bookings.filter(b => b.status === 'pending').length > 0 && (
+                {bookings.filter(isPendingBooking).length > 0 && (
                   <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                    {bookings.filter(b => b.status === 'pending').length}
+                    {bookings.filter(isPendingBooking).length}
                   </Badge>
                 )}
               </TabsTrigger>
               <TabsTrigger value="confirmed" className="flex items-center gap-2">
                 Confirmed
-                {bookings.filter(b => b.status === 'confirmed').length > 0 && (
+                {bookings.filter(isConfirmedBooking).length > 0 && (
                   <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                    {bookings.filter(b => b.status === 'confirmed').length}
+                    {bookings.filter(isConfirmedBooking).length}
                   </Badge>
                 )}
               </TabsTrigger>
               <TabsTrigger value="rejected" className="flex items-center gap-2">
                 Rejected
-                {bookings.filter(b => b.status === 'rejected').length > 0 && (
+                {bookings.filter(isRejectedBooking).length > 0 && (
                   <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                    {bookings.filter(b => b.status === 'rejected').length}
+                    {bookings.filter(isRejectedBooking).length}
                   </Badge>
                 )}
               </TabsTrigger>
               <TabsTrigger value="completed" className="flex items-center gap-2">
                 Completed
-                {bookings.filter(b => b.status === 'completed').length > 0 && (
+                {bookings.filter(isCompletedBooking).length > 0 && (
                   <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                    {bookings.filter(b => b.status === 'completed').length}
+                    {bookings.filter(isCompletedBooking).length}
                   </Badge>
                 )}
               </TabsTrigger>
@@ -1210,7 +1944,7 @@ const socket = new WebSocket(wsUrl);
             
             {/* Pending Appointments Tab */}
             <TabsContent value="pending" className="space-y-4">
-              {bookings.filter(b => b.status === 'pending').length === 0 ? (
+              {bookings.filter(isPendingBooking).length === 0 ? (
                 <Card className="text-center py-12">
                   <CardContent>
                     <div className="text-muted-foreground text-lg">
@@ -1221,12 +1955,12 @@ const socket = new WebSocket(wsUrl);
               ) : (
                 <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
-                    .filter(b => b.status === 'pending')
-                .sort((a, b) => {
-                  const dateA = new Date(`${a.date}T${a.start_time}`);
-                  const dateB = new Date(`${b.date}T${b.start_time}`);
-                  return dateA.getTime() - dateB.getTime(); // Earliest first
-                })
+                    .filter(isPendingBooking)
+                    .sort((a, b) => {
+                      const dateA = new Date(`${a.date}T${a.start_time}`);
+                      const dateB = new Date(`${b.date}T${b.start_time}`);
+                      return dateA.getTime() - dateB.getTime();
+                    })
                     .map(renderBookingCard)}
                 </div>
               )}
@@ -1234,7 +1968,7 @@ const socket = new WebSocket(wsUrl);
             
          {/* {   Confirmed Appointments Tab } */}
             <TabsContent value="confirmed" className="space-y-4">
-              {bookings.filter(b => b.status === 'confirmed').length === 0 ? (
+              {bookings.filter(isConfirmedBooking).length === 0 ? (
                 <Card className="text-center py-12">
                   <CardContent>
                     <div className="text-muted-foreground text-lg">
@@ -1245,7 +1979,7 @@ const socket = new WebSocket(wsUrl);
               ) : (
                 <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
-                    .filter(b => b.status === 'confirmed')
+                    .filter(isConfirmedBooking)
                     .sort((a, b) => {
                       const dateA = new Date(`${a.date}T${a.start_time}`);
                       const dateB = new Date(`${b.date}T${b.start_time}`);
@@ -1258,7 +1992,7 @@ const socket = new WebSocket(wsUrl);
             
             {/* Rejected Appointments Tab */}
             <TabsContent value="rejected" className="space-y-4">
-              {bookings.filter(b => b.status === 'rejected').length === 0 ? (
+              {bookings.filter(isRejectedBooking).length === 0 ? (
                 <Card className="text-center py-12">
                   <CardContent>
                     <div className="text-muted-foreground text-lg">
@@ -1269,11 +2003,11 @@ const socket = new WebSocket(wsUrl);
               ) : (
                 <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
-                    .filter(b => b.status === 'rejected')
+                    .filter(isRejectedBooking)
                     .sort((a, b) => {
                       const dateA = new Date(`${a.date}T${a.start_time}`);
                       const dateB = new Date(`${b.date}T${b.start_time}`);
-                      return dateA.getTime() - dateB.getTime(); // Oldest first (FIFO)
+                      return dateB.getTime() - dateA.getTime();
                     })
                     .map(renderBookingCard)}
                 </div>
@@ -1282,17 +2016,7 @@ const socket = new WebSocket(wsUrl);
             
             {/* Completed Appointments Tab */}
             <TabsContent value="completed" className="space-y-4">
-              {bookings.filter(b => {
-                const now = new Date();
-                const bookingDate = new Date(b.date);
-                const [hours, minutes] = b.end_time.split(':').map(Number);
-                const bookingEnd = new Date(bookingDate);
-                bookingEnd.setHours(hours, minutes, 0, 0);
-                
-                return (b.status === 'completed' || 
-                        (b.status === 'cancelled' && bookingEnd < now) ||
-                        (b.status === 'confirmed' && bookingEnd < now));
-              }).length === 0 ? (
+              {bookings.filter(isCompletedBooking).length === 0 ? (
                 <Card className="text-center py-12">
                   <CardContent>
                     <div className="text-muted-foreground text-lg">
@@ -1303,21 +2027,11 @@ const socket = new WebSocket(wsUrl);
               ) : (
                 <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3">
                   {bookings
-                    .filter(b => {
-                      const now = new Date();
-                      const bookingDate = new Date(b.date);
-                      const [hours, minutes] = b.end_time.split(':').map(Number);
-                      const bookingEnd = new Date(bookingDate);
-                      bookingEnd.setHours(hours, minutes, 0, 0);
-                      
-                      return (b.status === 'completed' || 
-                              (b.status === 'cancelled' && bookingEnd < now) ||
-                              (b.status === 'confirmed' && bookingEnd < now));
-                    })
+                    .filter(isCompletedBooking)
                     .sort((a, b) => {
                       const dateA = new Date(`${a.date}T${a.start_time}`);
                       const dateB = new Date(`${b.date}T${b.start_time}`);
-                      return dateB.getTime() - dateA.getTime(); // Most recent first
+                      return dateB.getTime() - dateA.getTime();
                     })
                     .map(renderBookingCard)}
                 </div>
@@ -1329,50 +2043,25 @@ const socket = new WebSocket(wsUrl);
       <Footer />
 
       {/* Reschedule Dialog */}
-      <Dialog open={isRescheduleOpen} onOpenChange={setIsRescheduleOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reschedule Appointment</DialogTitle>
-            <DialogDescription>
-              Select a new date and time for your appointment.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleRescheduleSubmit}>
-            <div className="grid gap-4 py-4">
-              <div>
-                <Label htmlFor="reschedule-date">Date</Label>
-                <Calendar 
-                  mode="single" 
-                  selected={rescheduleDate} 
-                  onSelect={setRescheduleDate} 
-                  disabled={(date) => date < new Date()} 
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <Label htmlFor="reschedule-time">Time</Label>
-                <Select onValueChange={setRescheduleTime} value={rescheduleTime}>
-                  <SelectTrigger id="reschedule-time" className="w-full">
-                    <SelectValue placeholder="Select time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[
-                      "09:00 AM", "10:00 AM", "11:00 AM", "12:00 PM",
-                      "01:00 PM", "02:00 PM", "03:00 PM", "04:00 PM",
-                      "05:00 PM", "06:00 PM", "07:00 PM", "08:00 PM"
-                    ].map(time => (
-                      <SelectItem key={time} value={time}>{time}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="submit">Reschedule</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <RescheduleDialog
+        isOpen={isRescheduleOpen}
+        onClose={() => {
+          setIsRescheduleOpen(false);
+          setSelectedBooking(null);
+        }}
+        booking={selectedBooking}
+        onReschedule={handleReschedule}
+        checkBookingAvailability={checkBookingAvailability} // <-- add this line
+      />
+
+      {/* Add QueryDialog to the component */}
+      <QueryDialog />
+
+      {/* Add RejectDialog to the component */}
+      <RejectDialog />
+
+      {/* Add RejectionReasonDialog to the component */}
+      {isRejectionReasonDialogOpen && <RejectionReasonDialog />}
     </div>
   );
 };
@@ -1398,5 +2087,19 @@ function parseDateTime(date: string, time: string) {
   baseDate.setHours(hours, minutes, 0, 0);
   return baseDate;
 }
+
+// Add these helper functions
+const parseTime = (timeString: string): Date => {
+  const [hours, minutes] = timeString.split(':').map(Number);
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+};
+
+const addHours = (date: Date, hours: number): string => {
+  const newDate = new Date(date);
+  newDate.setHours(date.getHours() + hours);
+  return format(newDate, 'HH:mm');
+};
 
 export default AppointmentLog;
